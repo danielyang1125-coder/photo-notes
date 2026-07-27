@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>图片笔记 - UI 交互原型 V1.0.0</title>
+  <style>
+    /* === Design tokens: aligned with TDesign MiniProgram === */
+    :root {
+      --td-brand: #0052d9;
+      --td-brand-hover: #266fe8;
+      --td-brand-active: #003cab;
+      --td-brand-light: #e7f0ff;
+      --td-success: #00a870;
+      --td-warning: #ed7b2f;
+      --td-danger: #d54941;
+      --td-text-primary: #181818;
+      --td-text-secondary: #5e5e5e;
+      --td-text-placeholder: #a6a6a6;
+      --td-border: #e7e7e7;
+      --td-page: #f3f3f3;
+      --td-card: #fff;
+      --td-stage: #101114;
+      --radius-control: 8px;
+      --radius-card: 12px;
+      --radius-popup: 16px;
+      --shadow-card: 0 1px 3px rgba(0, 0, 0, .08);
+      --shadow-popup: 0 -8px 24px rgba(0, 0, 0, .12);
+      --phone-w: 375px;
+      --phone-h: 812px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; font-family: var(--font); color: var(--td-text-primary); }
+    body { background: #e9edf3; }
+    button, textarea, input { font: inherit; }
+    button { border: 0; cursor: pointer; }
+    button:focus-visible, [tabindex]:focus-visible { outline: 3px solid rgba(0, 82, 217, .24); outline-offset: 2px; }
+    .hidden { display: none !important; }
+
+    /* === Review shell === */
+    .review-shell { min-height: 100vh; display: grid; grid-template-columns: 288px 1fr; }
+    .review-panel {
+      height: 100vh; position: sticky; top: 0; overflow-y: auto; padding: 24px 20px 32px;
+      background: #fff; border-right: 1px solid var(--td-border);
+    }
+    .review-brand { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; }
+    .review-logo, .launch-logo {
+      display: grid; place-items: center; color: #fff; background: var(--td-brand);
+      border-radius: 14px; box-shadow: 0 8px 20px rgba(0, 82, 217, .22);
+    }
+    .review-logo { width: 42px; height: 42px; font-size: 20px; }
+    .review-brand h1 { font-size: 16px; margin: 0 0 3px; }
+    .review-brand p { font-size: 12px; color: var(--td-text-secondary); margin: 0; }
+    .review-title {
+      margin: 22px 0 8px; color: var(--td-text-placeholder); font-size: 11px;
+      font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    }
+    .review-nav { display: grid; gap: 4px; }
+    .review-nav button, .demo-grid button {
+      min-height: 40px; padding: 0 12px; text-align: left; color: var(--td-text-secondary);
+      background: transparent; border-radius: 8px;
+    }
+    .review-nav button:hover, .review-nav button.is-active { color: var(--td-brand); background: var(--td-brand-light); }
+    .review-nav small { float: right; color: var(--td-text-placeholder); }
+    .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .demo-grid button {
+      min-height: 34px; padding: 7px 9px; text-align: center; font-size: 12px;
+      border: 1px solid var(--td-border); background: #fff;
+    }
+    .demo-grid button:hover { color: var(--td-brand); border-color: var(--td-brand); }
+    .review-tip {
+      margin-top: 20px; padding: 12px; border-radius: 8px; color: var(--td-text-secondary);
+      background: #f6f7fa; font-size: 12px; line-height: 1.6;
+    }
+    .stage {
+      min-width: 0; display: grid; place-items: center; padding: 36px;
+      background:
+        radial-gradient(circle at 55% 18%, rgba(255,255,255,.95), transparent 24%),
+        linear-gradient(135deg, #edf1f7, #dfe5ed);
+    }
+    .phone {
+      position: relative; width: var(--phone-w); height: var(--phone-h); overflow: hidden;
+      background: var(--td-page); border: 8px solid #17191c; border-radius: 42px;
+      box-shadow: 0 26px 70px rgba(17, 24, 39, .25);
+    }
+    .phone::before {
+      content: ""; position: absolute; z-index: 100; top: 8px; left: 50%; width: 106px; height: 24px;
+      transform: translateX(-50%); background: #17191c; border-radius: 14px;
+    }
+    .statusbar {
+      position: absolute; z-index: 90; top: 0; left: 0; right: 0; height: 44px; padding: 11px 18px 0;
+      display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; pointer-events: none;
+    }
+    .statusbar.is-dark { color: #fff; background: var(--td-stage); }
+    .status-icons { display: flex; gap: 5px; align-items: center; }
+    .status-icons i { display: block; height: 7px; background: currentColor; border-radius: 2px; opacity: .85; }
+    .status-icons i:nth-child(1) { width: 12px; }
+    .status-icons i:nth-child(2) { width: 9px; }
+    .status-icons i:nth-child(3) { width: 16px; border-radius: 3px; }
+    .app-screen { position: absolute; inset: 0; overflow: hidden; }
+    .page { display: none; position: absolute; inset: 0; padding-top: 44px; background: var(--td-page); overflow-y: auto; }
+    .page.is-active { display: block; animation: page-in .18s ease-out; }
+    .page.with-tab { padding-bottom: 76px; }
+
+    /* === TDesign-like primitives === */
+    .td-navbar {
+      position: sticky; z-index: 10; top: 0; height: 52px; padding: 0 12px;
+      display: grid; grid-template-columns: 52px 1fr 52px; align-items: center;
+      background: rgba(255,255,255,.96); border-bottom: 1px solid rgba(231,231,231,.85);
+      backdrop-filter: blur(12px);
+    }
+    .td-navbar.is-dark { color: #fff; background: rgba(16,17,20,.96); border-bottom-color: rgba(255,255,255,.08); }
+    .nav-title { text-align: center; font-size: 18px; line-height: 26px; font-weight: 600; }
+    .nav-side { min-width: 44px; min-height: 44px; display: flex; align-items: center; }
+    .nav-side:last-child { justify-content: flex-end; }
+    .icon-btn {
+      width: 44px; height: 44px; display: grid; place-items: center; color: inherit;
+      background: transparent; border-radius: 50%; font-size: 22px;
+    }
+    .td-button {
+      min-height: 44px; padding: 0 20px; display: inline-flex; align-items: center; justify-content: center;
+      gap: 7px; border-radius: var(--radius-control); color: #fff; background: var(--td-brand);
+      font-size: 15px; font-weight: 600; transition: transform .15s, background .15s, opacity .15s;
+    }
+    .td-button:active { transform: scale(.98); background: var(--td-brand-active); }
+    .td-button.block { width: 100%; }
+    .td-button.outline { color: var(--td-brand); border: 1px solid var(--td-brand); background: #fff; }
+    .td-button.text { min-height: 40px; padding: 0 10px; color: var(--td-brand); background: transparent; }
+    .td-button.danger { background: var(--td-danger); }
+    .td-button.danger-text { color: var(--td-danger); background: transparent; }
+    .td-button:disabled { color: #fff; background: #c9d7ef; cursor: not-allowed; transform: none; }
+    .td-tag {
+      display: inline-flex; align-items: center; min-height: 20px; padding: 0 7px; border-radius: 4px;
+      color: var(--td-brand); background: var(--td-brand-light); font-size: 11px; font-weight: 500;
+    }
+    .td-notice {
+      margin: 12px 16px 4px; padding: 10px 12px; display: flex; gap: 8px; align-items: flex-start;
+      color: #8b4f13; background: #fff3e7; border-radius: 8px; font-size: 12px; line-height: 18px;
+    }
+    .td-tabbar {
+      position: absolute; z-index: 20; left: 0; right: 0; bottom: 0; height: 74px; padding: 7px 50px 13px;
+      display: flex; justify-content: space-around; background: rgba(255,255,255,.97);
+      border-top: 1px solid var(--td-border); backdrop-filter: blur(14px);
+    }
+    .tab-item {
+      min-width: 64px; color: var(--td-text-placeholder); background: transparent; font-size: 11px;
+      display: grid; justify-items: center; gap: 2px;
+    }
+    .tab-item .tab-icon { font-size: 22px; line-height: 26px; }
+    .tab-item.is-active { color: var(--td-brand); font-weight: 600; }
+    .td-empty { min-height: 430px; padding: 48px 28px; display: grid; place-content: center; justify-items: center; text-align: center; }
+    .empty-art {
+      width: 108px; height: 86px; position: relative; margin-bottom: 20px;
+      border-radius: 16px; background: linear-gradient(145deg, #e8eef8, #f8faff);
+    }
+    .empty-art::before {
+      content: ""; position: absolute; left: 18px; right: 18px; bottom: 17px; height: 34px;
+      background: linear-gradient(135deg, transparent 45%, #9eb7dd 46% 65%, transparent 66%),
+        linear-gradient(45deg, transparent 45%, #bed0ea 46% 70%, transparent 71%);
+      border-bottom: 2px solid #8fa9d1;
+    }
+    .empty-art::after { content: ""; position: absolute; top: 17px; right: 23px; width: 14px; height: 14px; border-radius: 50%; background: #f3b55c; }
+    .td-empty h3 { margin: 0 0 7px; font-size: 16px; }
+    .td-empty p { margin: 0 0 20px; color: var(--td-text-secondary); font-size: 13px; line-height: 20px; }
+    .skeleton { padding: 16px; }
+    .skeleton-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .sk {
+      min-height: 156px; border-radius: 12px;
+      background: linear-gradient(90deg,#e8eaed 25%,#f5f6f7 37%,#e8eaed 63%);
+      background-size: 400% 100%; animation: shimmer 1.35s infinite;
+    }
+    .sk:nth-child(2), .sk:nth-child(5) { min-height: 206px; }
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid #d5e2f7; border-top-color: var(--td-brand);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+
+    /* === Mock image system (fully local) === */
+    .photo-art { position: relative; overflow: hidden; background: #d9e3ee; isolation: isolate; }
+    .photo-art::before, .photo-art::after { content: ""; position: absolute; pointer-events: none; }
+    .scene-coast { background: linear-gradient(#a9ddf2 0 46%, #f2dfb9 47% 69%, #46a3b0 70%); }
+    .scene-coast::before { left: -15%; right: -15%; bottom: 12%; height: 28%; background: repeating-radial-gradient(ellipse at 50% 110%, transparent 0 13px, rgba(255,255,255,.65) 14px 16px); }
+    .scene-coast::after { top: 17%; right: 16%; width: 26px; height: 26px; border-radius: 50%; background: #ffd46d; box-shadow: -135px 26px 0 -7px rgba(255,255,255,.8); }
+    .scene-book { background: linear-gradient(140deg,#86715e,#c2a985); }
+    .scene-book::before { inset: 16% 10%; transform: rotate(-5deg); background: #fffdf5; border-radius: 3px; box-shadow: 0 10px 28px rgba(46,33,22,.22); }
+    .scene-book::after { left: 22%; right: 21%; top: 31%; height: 2px; background: #a39b91; box-shadow: 0 10px #bbb3aa,0 20px #a39b91,0 30px #c4bbb0,0 40px #a39b91,0 50px #bbb3aa; }
+    .scene-plant { background: linear-gradient(160deg,#e7ece7,#bccbb9); }
+    .scene-plant::before { width: 82px; height: 120px; left: 27%; top: 14%; background: radial-gradient(ellipse at 30% 22%,#477d51 0 18%,transparent 19%),radial-gradient(ellipse at 72% 38%,#639968 0 20%,transparent 21%),radial-gradient(ellipse at 35% 55%,#2f7047 0 22%,transparent 23%),radial-gradient(ellipse at 70% 72%,#74a779 0 20%,transparent 21%); }
+    .scene-plant::after { left: 31%; bottom: 0; width: 74px; height: 54px; background: #ad7657; clip-path: polygon(10% 0,90% 0,75% 100%,25% 100%); }
+    .scene-city { background: linear-gradient(#f5b4a2 0 50%,#7d7f99 51%); }
+    .scene-city::before { left: 0; right: 0; bottom: 0; height: 52%; background: linear-gradient(90deg,#45475d 0 18%,transparent 18% 22%,#58596a 22% 43%,transparent 43% 47%,#3b3e52 47% 70%,transparent 70% 75%,#565971 75%); clip-path: polygon(0 34%,18% 34%,18% 12%,36% 12%,36% 46%,54% 46%,54% 0,70% 0,70% 25%,88% 25%,88% 8%,100% 8%,100% 100%,0 100%); }
+    .scene-city::after { left: 12%; right: 8%; bottom: 16%; height: 3px; background: repeating-linear-gradient(90deg,#ffd76f 0 5px,transparent 5px 19px); }
+    .scene-desk { background: linear-gradient(135deg,#e2d6c7,#b18b67); }
+    .scene-desk::before { left: 12%; top: 16%; width: 56%; height: 48%; transform: rotate(5deg); background: #fbfbf7; box-shadow: 0 7px 16px rgba(56,38,22,.18); }
+    .scene-desk::after { right: 9%; top: 20%; width: 42px; height: 42px; border: 8px solid #6583a0; border-radius: 50%; box-shadow: 0 38px 0 -13px #2f465a; }
+    .scene-food { background: linear-gradient(145deg,#a98d73,#dbc9b5); }
+    .scene-food::before { width: 118px; height: 118px; border-radius: 50%; left: 18%; top: 14%; background: radial-gradient(circle,#d96a42 0 12%,#f0bc62 13% 24%,#648d4c 25% 32%,#f6eee3 33% 63%,#d9d0c7 64% 69%,transparent 70%); box-shadow: 0 12px 25px rgba(70,42,26,.2); }
+    .scene-food::after { right: 12%; top: 9%; width: 4px; height: 70%; transform: rotate(8deg); background: #5d4231; box-shadow: 10px 0 #5d4231; }
+    .photo-label {
+      position: absolute; left: 10px; bottom: 10px; padding: 4px 7px; color: #fff;
+      background: rgba(0,0,0,.35); border-radius: 4px; font-size: 10px; backdrop-filter: blur(4px);
+    }
+
+    /* === PG-001 === */
+    .launch-page { background: #fff; }
+    .launch-wrap { min-height: 720px; display: grid; place-content: center; justify-items: center; padding: 28px; text-align: center; }
+    .launch-logo { width: 68px; height: 68px; margin-bottom: 18px; font-size: 31px; }
+    .launch-wrap h2 { margin: 0; font-size: 22px; }
+    .launch-wrap p { margin: 8px 0 30px; color: var(--td-text-secondary); font-size: 13px; }
+    .launch-status { display: flex; gap: 9px; align-items: center; color: var(--td-text-secondary); font-size: 13px; }
+    .launch-status .spinner { width: 18px; height: 18px; border-width: 2px; }
+
+    /* === PG-002 === */
+    .gallery-wrap { padding: 12px 16px 22px; }
+    .gallery { columns: 2; column-gap: 8px; }
+    .photo-card {
+      position: relative; break-inside: avoid; margin: 0 0 8px; overflow: hidden;
+      border-radius: var(--radius-card); background: #fff; box-shadow: var(--shadow-card);
+    }
+    .photo-card button { width: 100%; display: block; padding: 0; background: transparent; }
+    .photo-card .photo-art { width: 100%; min-height: 156px; }
+    .photo-card.tall .photo-art { min-height: 218px; }
+    .photo-card.medium .photo-art { min-height: 184px; }
+    .note-badge {
+      position: absolute; right: 8px; bottom: 8px; min-width: 24px; height: 24px; padding: 0 7px;
+      display: flex; gap: 3px; align-items: center; justify-content: center; color: #fff;
+      border: 1px solid rgba(255,255,255,.24); border-radius: 12px; background: rgba(0,0,0,.55);
+      font-size: 11px; backdrop-filter: blur(5px);
+    }
+    .fab {
+      position: absolute; z-index: 18; right: 18px; bottom: 92px; width: 54px; height: 54px;
+      display: grid; place-items: center; color: #fff; background: var(--td-brand);
+      border-radius: 50%; font-size: 28px; box-shadow: 0 8px 22px rgba(0,82,217,.32);
+    }
+    .page-error { padding-top: 74px; }
+
+    /* === PG-004 detail === */
+    .detail-page { padding-top: 44px; background: #fff; }
+    .detail-page .td-navbar { position: sticky; }
+    .detail-page .nav-side:last-child .icon-btn { font-size: 0; }
+    .detail-page .nav-side:last-child .icon-btn::after { content: "•••"; color: #fff; font-size: 16px; letter-spacing: 1px; }
+    .image-stage { position: relative; height: 302px; display: grid; place-items: center; background: var(--td-stage); }
+    .image-stage .photo-art { width: 100%; height: 100%; }
+    .image-hint { position: absolute; right: 12px; bottom: 10px; padding: 4px 8px; color: #fff; background: rgba(0,0,0,.45); border-radius: 10px; font-size: 10px; }
+    .notes-panel { min-height: 360px; padding: 18px 16px 30px; background: #fff; border-radius: 16px 16px 0 0; }
+    .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .section-head h3 { margin: 0; font-size: 16px; }
+    .section-head > .td-button { display: inline-flex !important; color: transparent !important; font-size: 0; }
+    .section-head > .td-button::after { content: "＋ 添加备注"; color: var(--td-brand); font-size: 14px; }
+    .note-detail {
+      position: relative; padding: 14px 42px 14px 14px; margin-bottom: 10px; border: 1px solid var(--td-border);
+      border-radius: 10px; background: #fff; transition: background .25s, border .25s;
+    }
+    .note-detail.is-highlight { background: var(--td-brand-light); border-color: #8fb7f6; animation: highlight 1.5s ease-out; }
+    .note-detail p { margin: 0 0 10px; font-size: 14px; line-height: 22px; white-space: pre-line; }
+    .note-detail footer { display: flex; gap: 8px; align-items: center; color: var(--td-text-placeholder); font-size: 11px; }
+    .note-menu { position: absolute; right: 3px; top: 5px; width: 40px; height: 40px; display: grid; place-items: center; color: transparent !important; background: transparent; border-radius: 50%; font-size: 0; }
+    .note-menu::after { content: "•••"; color: var(--td-text-secondary); font-size: 13px; letter-spacing: 1px; }
+
+    /* === PG-006 notes list === */
+    .sort-summary { padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; color: var(--td-text-secondary); font-size: 12px; }
+    .note-list { background: #fff; border-top: 1px solid var(--td-border); }
+    .note-cell {
+      width: 100%; min-height: 96px; padding: 12px 16px; display: grid; grid-template-columns: 72px 1fr 20px;
+      gap: 12px; align-items: center; text-align: left; background: #fff; border-bottom: 1px solid var(--td-border);
+    }
+    .note-cell .photo-art { width: 72px; height: 72px; border-radius: 8px; }
+    .note-cell-body { min-width: 0; }
+    .note-cell-body p {
+      display: -webkit-box; overflow: hidden; margin: 0 0 7px; line-height: 20px; font-size: 14px;
+      -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    }
+    .note-meta { display: flex; gap: 7px; align-items: center; color: var(--td-text-placeholder); font-size: 11px; }
+    .chevron { color: var(--td-text-placeholder); font-size: 20px; }
+
+    /* === PG-007 settings === */
+    .settings-body { padding: 12px 0 32px; }
+    .cell-group { margin-bottom: 12px; background: #fff; }
+    .group-title { padding: 11px 16px 7px; color: var(--td-text-placeholder); font-size: 12px; background: var(--td-page); }
+    .td-cell {
+      min-height: 56px; padding: 12px 16px; display: flex; gap: 12px; align-items: center;
+      border-bottom: 1px solid var(--td-border); background: #fff;
+    }
+    .cell-icon { width: 28px; color: var(--td-brand); text-align: center; font-size: 20px; }
+    .cell-main { flex: 1; min-width: 0; }
+    .cell-title { font-size: 15px; }
+    .cell-desc { margin-top: 3px; color: var(--td-text-placeholder); font-size: 11px; line-height: 17px; }
+    .cell-right { color: var(--td-text-placeholder); font-size: 13px; }
+    .storage-card { margin: 4px 16px 16px; padding: 16px; background: #fff; border-radius: 12px; box-shadow: var(--shadow-card); }
+    .storage-head { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 13px; }
+    .progress-track { height: 8px; overflow: hidden; background: #ececec; border-radius: 4px; }
+    .progress-value { height: 100%; width: 78%; background: var(--td-brand); border-radius: 4px; }
+    .danger-zone { padding: 24px 16px; }
+
+    /* === PG-008 deleting === */
+    .deleting-page { background: #fff; }
+    .result-wrap { min-height: 720px; padding: 80px 28px 30px; display: grid; align-content: center; justify-items: center; text-align: center; }
+    .result-icon {
+      width: 76px; height: 76px; margin-bottom: 22px; display: grid; place-items: center;
+      color: var(--td-brand); background: var(--td-brand-light); border-radius: 50%; font-size: 34px;
+    }
+    .result-wrap h2 { margin: 0 0 10px; font-size: 20px; }
+    .result-wrap p { max-width: 280px; margin: 0 0 28px; color: var(--td-text-secondary); font-size: 13px; line-height: 21px; }
+
+    /* === Overlays: ActionSheet / Popup / Dialog / Toast === */
+    .overlay { display: none; position: absolute; z-index: 60; inset: 0; align-items: flex-end; background: rgba(0,0,0,.52); }
+    .overlay.is-open { display: flex; animation: fade-in .18s ease-out; }
+    .sheet {
+      width: 100%; padding: 10px 12px max(14px, env(safe-area-inset-bottom)); background: var(--td-page);
+      border-radius: 16px 16px 0 0; box-shadow: var(--shadow-popup); animation: sheet-in .22s ease-out;
+    }
+    .sheet-title { padding: 10px 12px 12px; color: var(--td-text-secondary); text-align: center; font-size: 13px; }
+    .sheet-option {
+      width: 100%; min-height: 54px; padding: 0 16px; display: flex; gap: 12px; align-items: center;
+      justify-content: center; color: var(--td-text-primary); background: #fff; border-bottom: 1px solid var(--td-border); font-size: 16px;
+    }
+    .sheet-option:first-of-type { border-radius: 10px 10px 0 0; }
+    .sheet-option:last-of-type { border-radius: 0 0 10px 10px; border-bottom: 0; }
+    .sheet-option.is-selected { color: var(--td-brand); font-weight: 600; }
+    .sheet-cancel { margin-top: 8px; border-radius: 10px !important; }
+    .popup {
+      width: 100%; max-height: calc(100% - 64px); overflow-y: auto; background: #fff; border-radius: 16px 16px 0 0;
+      box-shadow: var(--shadow-popup); animation: sheet-in .22s ease-out;
+    }
+    .popup-head {
+      position: sticky; z-index: 2; top: 0; min-height: 56px; padding: 0 16px; display: grid;
+      grid-template-columns: 70px 1fr 70px; align-items: center; background: #fff; border-bottom: 1px solid var(--td-border);
+    }
+    .popup-head h3 { margin: 0; text-align: center; font-size: 17px; }
+    .popup-head button:first-child { justify-self: start; }
+    .popup-head button:last-child { justify-self: end; }
+    .upload-summary { padding: 14px 16px 8px; display: flex; justify-content: space-between; font-size: 13px; }
+    .upload-grid { padding: 8px 16px 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .upload-task { position: relative; min-width: 0; }
+    .upload-thumb { position: relative; height: 94px; overflow: hidden; border-radius: 8px; background: #eee; }
+    .upload-thumb .photo-art { width: 100%; height: 100%; }
+    .task-overlay { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; color: #fff; background: rgba(0,0,0,.5); font-size: 11px; }
+    .task-progress { width: 54px; height: 4px; margin-top: 6px; overflow: hidden; background: rgba(255,255,255,.32); border-radius: 2px; }
+    .task-progress i { display: block; height: 100%; width: var(--progress,0%); background: #fff; transition: width .25s; }
+    .task-state { min-height: 31px; margin-top: 5px; color: var(--td-text-secondary); font-size: 10px; line-height: 14px; }
+    .task-state.is-error { color: var(--td-danger); }
+    .upload-actions { position: sticky; bottom: 0; padding: 12px 16px 20px; display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; background: #fff; border-top: 1px solid var(--td-border); }
+    .editor-body { padding: 16px 16px 28px; }
+    .message-error { margin-bottom: 12px; padding: 10px 12px; color: #9f2d28; background: #fff0ef; border-radius: 8px; font-size: 12px; }
+    .textarea-wrap { border: 1px solid var(--td-border); border-radius: 10px; overflow: hidden; transition: border .15s; }
+    .textarea-wrap:focus-within { border-color: var(--td-brand); box-shadow: 0 0 0 2px rgba(0,82,217,.08); }
+    textarea { width: 100%; min-height: 210px; padding: 14px; resize: none; border: 0; outline: 0; color: var(--td-text-primary); font-size: 15px; line-height: 24px; }
+    .count-row { padding: 0 12px 10px; display: flex; justify-content: space-between; color: var(--td-text-placeholder); font-size: 11px; }
+    .count-row .is-error { color: var(--td-danger); }
+    .input-error { color: var(--td-danger); }
+    .dialog-wrap { display: none; position: absolute; z-index: 80; inset: 0; place-items: center; padding: 28px; background: rgba(0,0,0,.54); }
+    .dialog-wrap.is-open { display: grid; animation: fade-in .16s ease-out; }
+    .dialog {
+      width: 100%; overflow: hidden; background: #fff; border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.25);
+      animation: dialog-in .18s ease-out;
+    }
+    .dialog-content { padding: 24px 22px 20px; text-align: center; }
+    .dialog-content h3 { margin: 0 0 10px; font-size: 18px; }
+    .dialog-content p { margin: 0; color: var(--td-text-secondary); font-size: 13px; line-height: 21px; white-space: pre-line; }
+    .dialog-content strong { color: var(--td-danger); }
+    .dialog-input { width: 100%; height: 44px; margin-top: 16px; padding: 0 12px; border: 1px solid var(--td-border); border-radius: 8px; outline: 0; }
+    .dialog-input:focus { border-color: var(--td-brand); }
+    .dialog-actions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--td-border); }
+    .dialog-actions.vertical { grid-template-columns: 1fr; }
+    .dialog-actions button { min-height: 52px; color: var(--td-text-primary); background: #fff; border-right: 1px solid var(--td-border); font-size: 15px; }
+    .dialog-actions button:last-child { border: 0; color: var(--td-brand); font-weight: 600; }
+    .dialog-actions button.danger-action { color: var(--td-danger); }
+    .dialog-actions button:disabled { color: var(--td-text-placeholder); background: #fafafa; }
+    .toast {
+      display: none; position: absolute; z-index: 100; left: 50%; bottom: 104px; max-width: 290px;
+      transform: translateX(-50%); padding: 10px 14px; color: #fff; background: rgba(0,0,0,.78);
+      border-radius: 8px; font-size: 13px; line-height: 18px; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    }
+    .toast.is-open { display: block; animation: toast-in .2s ease-out; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+    @keyframes page-in { from { opacity: .6; transform: translateX(6px); } }
+    @keyframes fade-in { from { opacity: 0; } }
+    @keyframes sheet-in { from { transform: translateY(25%); opacity: .4; } }
+    @keyframes dialog-in { from { transform: scale(.95); opacity: .4; } }
+    @keyframes toast-in { from { transform: translate(-50%,8px); opacity: 0; } }
+    @keyframes highlight { 0%, 70% { background: #dceaff; } 100% { background: var(--td-brand-light); } }
+
+    @media (max-width: 760px) {
+      body { background: var(--td-page); }
+      .review-shell { display: block; }
+      .review-panel { display: none; }
+      .stage { display: block; padding: 0; }
+      .phone { width: 100vw; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+      .phone::before { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="review-shell">
+    <aside class="review-panel" aria-label="原型评审导航">
+      <div class="review-brand">
+        <div class="review-logo">▧</div>
+        <div><h1>图片笔记</h1><p>TDesign UI Prototype · V1.0.0</p></div>
+      </div>
+
+      <div class="review-title">页面导航</div>
+      <nav class="review-nav">
+        <button data-page="launch"><span>启动与身份建立</span><small>PG-001</small></button>
+        <button class="is-active" data-page="photos"><span>图片列表</span><small>PG-002</small></button>
+        <button data-demo="upload"><span>图片上传面板</span><small>PG-003</small></button>
+        <button data-page="detail"><span>图片预览</span><small>PG-004</small></button>
+        <button data-demo="editor"><span>备注编辑层</span><small>PG-005</small></button>
+        <button data-page="notes"><span>备注列表</span><small>PG-006</small></button>
+        <button data-page="settings"><span>设置与隐私</span><small>PG-007</small></button>
+        <button data-page="deleting"><span>注销处理中</span><small>PG-008</small></button>
+      </nav>
+
+      <div class="review-title">状态演示</div>
+      <div class="demo-grid">
+        <button data-state="photos-normal">图片正常</button>
+        <button data-state="photos-empty">图片空态</button>
+        <button data-state="photos-loading">图片骨架</button>
+        <button data-state="photos-error">图片错误</button>
+        <button data-state="space-warning">空间预警</button>
+        <button data-demo="sort">排序菜单</button>
+        <button data-demo="upload-fail">上传失败</button>
+        <button data-demo="conflict">备注冲突</button>
+        <button data-state="notes-empty">备注空态</button>
+        <button data-demo="delete-photo">删除图片</button>
+      </div>
+
+      <div class="review-tip">
+        建议按主流程评审：点击手机内“+” → 相册选择 → 开始上传 → 完成 → 打开图片 → 添加备注 → 切换备注 Tab。
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="phone" aria-label="375乘812微信小程序原型">
+        <div class="statusbar" id="statusbar">
+          <span>9:41</span>
+          <span class="status-icons" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+        <div class="app-screen">
+          <!-- PG-001 -->
+          <section class="page launch-page" id="page-launch">
+            <div class="launch-wrap">
+              <div class="launch-logo">▧</div>
+              <h2>图片笔记</h2>
+              <p>简单记录每一张图片背后的想法</p>
+              <div class="launch-status"><span class="spinner"></span><span>正在同步你的图片笔记…</span></div>
+            </div>
+          </section>
+
+          <!-- PG-002 -->
+          <section class="page with-tab is-active" id="page-photos">
+            <header class="td-navbar">
+              <div class="nav-side"></div>
+              <div class="nav-title">图片</div>
+              <div class="nav-side"><button class="icon-btn" data-page="settings" aria-label="设置">⚙</button></div>
+            </header>
+            <div id="spaceNotice" class="td-notice hidden"><span>⚠</span><span>已使用 425 MB，空间即将用完。删除不需要的图片可释放空间。</span></div>
+            <div id="photosNormal" class="gallery-wrap">
+              <div class="gallery">
+                <article class="photo-card tall">
+                  <button data-open-detail="coast" aria-label="打开海边图片">
+                    <div class="photo-art scene-coast"><span class="photo-label">周末海边</span></div>
+                  </button>
+                  <span class="note-badge">▤ 3</span>
+                </article>
+                <article class="photo-card">
+                  <button data-open-detail="book" aria-label="打开读书图片">
+                    <div class="photo-art scene-book"><span class="photo-label">读书摘录</span></div>
+                  </button>
+                  <span class="note-badge">▤</span>
+                </article>
+                <article class="photo-card medium">
+                  <button data-open-detail="plant" aria-label="打开绿植图片">
+                    <div class="photo-art scene-plant"><span class="photo-label">客厅绿植</span></div>
+                  </button>
+                </article>
+                <article class="photo-card tall">
+                  <button data-open-detail="city" aria-label="打开城市图片">
+                    <div class="photo-art scene-city"><span class="photo-label">傍晚街景</span></div>
+                  </button>
+                  <span class="note-badge">▤ 2</span>
+                </article>
+                <article class="photo-card">
+                  <button data-open-detail="desk" aria-label="打开工作台图片">
+                    <div class="photo-art scene-desk"><span class="photo-label">工作台灵感</span></div>
+                  </button>
+                  <span class="note-badge">▤ 4</span>
+                </article>
+                <article class="photo-card medium">
+                  <button data-open-detail="food" aria-label="打开餐食图片">
+                    <div class="photo-art scene-food"><span class="photo-label">周末早午餐</span></div>
+                  </button>
+                </article>
+              </div>
+            </div>
+            <div id="photosEmpty" class="td-empty hidden">
+              <div class="empty-art"></div><h3>还没有图片笔记</h3>
+              <p>从相册选择或拍一张照片<br>记录第一条想法</p>
+              <button class="td-button" data-add-photo>添加第一张图片</button>
+            </div>
+            <div id="photosLoading" class="skeleton hidden"><div class="skeleton-grid"><i class="sk"></i><i class="sk"></i><i class="sk"></i><i class="sk"></i><i class="sk"></i><i class="sk"></i></div></div>
+            <div id="photosError" class="td-empty page-error hidden">
+              <div class="empty-art"></div><h3>图片加载失败</h3><p>网络开了个小差，已上传的内容不会丢失</p>
+              <button class="td-button" data-state-reset>重新加载</button>
+            </div>
+            <button class="fab" data-add-photo aria-label="添加图片">＋</button>
+            <nav class="td-tabbar" aria-label="主导航">
+              <button class="tab-item is-active" data-page="photos"><span class="tab-icon">▧</span><span>图片</span></button>
+              <button class="tab-item" data-page="notes"><span class="tab-icon">▤</span><span>备注</span></button>
+            </nav>
+          </section>
+
+          <!-- PG-004 -->
+          <section class="page detail-page" id="page-detail">
+            <header class="td-navbar is-dark">
+              <div class="nav-side"><button class="icon-btn" data-page="photos" aria-label="返回图片列表">‹</button></div>
+              <div class="nav-title" id="detailDate">2026年7月20日</div>
+              <div class="nav-side"><button class="icon-btn" data-demo="photo-actions" aria-label="更多操作">⋯</button></div>
+            </header>
+            <div class="image-stage">
+              <div id="detailImage" class="photo-art scene-coast"><span class="photo-label">周末海边</span></div>
+              <span class="image-hint">双指缩放查看</span>
+            </div>
+            <div class="notes-panel">
+              <div class="section-head"><h3>备注（<span id="detailNoteCount">3</span>）</h3><button class="td-button text" data-demo="editor">＋ 添加备注</button></div>
+              <div id="detailNotes">
+                <article class="note-detail" id="targetNote">
+                  <button class="note-menu" data-demo="note-actions" aria-label="备注更多操作">⋯</button>
+                  <p>海风比想象中温柔。下次可以带一本书，在这里待到日落。</p>
+                  <footer><span>7月20日 18:32</span></footer>
+                </article>
+                <article class="note-detail">
+                  <button class="note-menu" data-demo="note-actions" aria-label="备注更多操作">⋯</button>
+                  <p>右侧礁石附近的浪比较小，适合拍慢门。</p>
+                  <footer><span>7月20日 18:40</span><span class="td-tag">已编辑</span></footer>
+                </article>
+                <article class="note-detail">
+                  <button class="note-menu" data-demo="note-actions" aria-label="备注更多操作">⋯</button>
+                  <p>停车场到沙滩步行大约十分钟。</p>
+                  <footer><span>7月21日 09:12</span></footer>
+                </article>
+              </div>
+              <div id="detailEmpty" class="td-empty hidden" style="min-height:260px;padding:28px 20px;">
+                <div class="empty-art" style="transform:scale(.75);margin-bottom:8px;"></div>
+                <h3>还没有备注</h3><p>记录这张图片带给你的想法</p>
+                <button class="td-button" data-demo="editor">添加第一条备注</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- PG-006 -->
+          <section class="page with-tab" id="page-notes">
+            <header class="td-navbar">
+              <div class="nav-side"></div><div class="nav-title">备注</div>
+              <div class="nav-side"><button class="icon-btn" data-demo="sort" aria-label="备注排序">⇅</button></div>
+            </header>
+            <div id="notesNormal">
+              <div class="sort-summary"><span>共 7 条备注</span><span id="sortLabel" class="td-tag">备注时间 · 最新</span></div>
+              <div class="note-list">
+                <button class="note-cell" data-open-note>
+                  <span class="photo-art scene-coast"></span>
+                  <span class="note-cell-body"><p>海风比想象中温柔。下次可以带一本书，在这里待到日落。</p><span class="note-meta">7月20日 18:32</span></span>
+                  <span class="chevron">›</span>
+                </button>
+                <button class="note-cell" data-open-note>
+                  <span class="photo-art scene-book"></span>
+                  <span class="note-cell-body"><p>关于长期主义的这一段很有启发，值得周末再整理一次。</p><span class="note-meta">7月18日 22:05 <i class="td-tag">已编辑</i></span></span>
+                  <span class="chevron">›</span>
+                </button>
+                <button class="note-cell" data-open-note>
+                  <span class="photo-art scene-desk"></span>
+                  <span class="note-cell-body"><p>桌面左侧还可以增加一盏暖光台灯，晚上会更舒服。</p><span class="note-meta">7月16日 10:24</span></span>
+                  <span class="chevron">›</span>
+                </button>
+                <button class="note-cell" data-open-note>
+                  <span class="photo-art scene-city"></span>
+                  <span class="note-cell-body"><p>傍晚六点半的光线刚好，建筑轮廓很清楚。</p><span class="note-meta">7月14日 19:02</span></span>
+                  <span class="chevron">›</span>
+                </button>
+                <button class="note-cell" data-open-note>
+                  <span class="photo-art scene-plant"></span>
+                  <span class="note-cell-body"><p>下次换成更高的陶盆，和沙发的比例会更协调。</p><span class="note-meta">7月10日 12:41</span></span>
+                  <span class="chevron">›</span>
+                </button>
+              </div>
+            </div>
+            <div id="notesEmpty" class="td-empty hidden">
+              <div class="empty-art"></div><h3>还没有备注</h3><p>打开一张图片，记录当下的想法</p>
+              <button class="td-button" data-page="photos">去图片中添加</button>
+            </div>
+            <nav class="td-tabbar" aria-label="主导航">
+              <button class="tab-item" data-page="photos"><span class="tab-icon">▧</span><span>图片</span></button>
+              <button class="tab-item is-active" data-page="notes"><span class="tab-icon">▤</span><span>备注</span></button>
+            </nav>
+          </section>
+
+          <!-- PG-007 -->
+          <section class="page" id="page-settings">
+            <header class="td-navbar">
+              <div class="nav-side"><button class="icon-btn" data-page="photos" aria-label="返回图片列表">‹</button></div>
+              <div class="nav-title">设置与隐私</div><div class="nav-side"></div>
+            </header>
+            <div class="settings-body">
+              <div class="group-title">存储空间</div>
+              <div class="storage-card">
+                <div class="storage-head"><strong>已使用 389 MB</strong><span>共 500 MB</span></div>
+                <div class="progress-track"><div class="progress-value"></div></div>
+                <p class="cell-desc">仅保存压缩图片；删除图片后会释放对应空间。</p>
+              </div>
+              <div class="group-title">数据与隐私</div>
+              <div class="cell-group">
+                <div class="td-cell"><span class="cell-icon">▧</span><span class="cell-main"><span class="cell-title">图片存储说明</span><span class="cell-desc">云端不保存原图，压缩后细节不可恢复</span></span><span class="cell-right">›</span></div>
+                <div class="td-cell"><span class="cell-icon">◉</span><span class="cell-main"><span class="cell-title">隐私说明</span><span class="cell-desc">图片与备注仅本人可见</span></span><span class="cell-right">›</span></div>
+                <div class="td-cell"><span class="cell-icon">◎</span><span class="cell-main"><span class="cell-title">权限用途</span><span class="cell-desc">仅在选择图片或拍照时申请</span></span><span class="cell-right">›</span></div>
+              </div>
+              <div class="group-title">关于</div>
+              <div class="cell-group"><div class="td-cell"><span class="cell-main"><span class="cell-title">当前版本</span></span><span class="cell-right">V1.0.0</span></div></div>
+              <div class="danger-zone"><button class="td-button danger-text block" data-demo="logout-step1">注销账号</button></div>
+            </div>
+          </section>
+
+          <!-- PG-008 -->
+          <section class="page deleting-page" id="page-deleting">
+            <div class="result-wrap">
+              <div class="result-icon">↻</div>
+              <h2>账号正在注销</h2>
+              <p>账号已冻结，系统正在永久清理全部图片、备注与微信身份绑定。该操作不可撤销，请耐心等待。</p>
+              <button class="td-button outline">联系客服</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ActionSheet -->
+        <div class="overlay" id="actionSheet" role="dialog" aria-modal="true">
+          <div class="sheet" id="actionSheetBody"></div>
+        </div>
+
+        <!-- Upload popup -->
+        <div class="overlay" id="uploadOverlay" role="dialog" aria-modal="true" aria-label="添加图片">
+          <section class="popup">
+            <header class="popup-head">
+              <button class="td-button text" data-close-upload>关闭</button><h3>添加图片</h3><span></span>
+            </header>
+            <div class="upload-summary"><strong>当前批次 <span id="uploadCount">6</span>/20</strong><span id="uploadSummary">等待开始</span></div>
+            <div class="upload-grid" id="uploadGrid"></div>
+            <div class="upload-actions">
+              <button class="td-button outline" data-continue-select>继续选择</button>
+              <button class="td-button" id="uploadPrimary" data-start-upload>开始上传</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- Note editor -->
+        <div class="overlay" id="editorOverlay" role="dialog" aria-modal="true" aria-label="备注编辑">
+          <section class="popup">
+            <header class="popup-head">
+              <button class="td-button text" data-close-editor>取消</button><h3>添加备注</h3>
+              <button class="td-button text" id="saveNoteBtn" data-save-note>保存</button>
+            </header>
+            <div class="editor-body">
+              <div id="editorMessage" class="message-error hidden">保存失败，请检查网络后重试。你的内容已保留。</div>
+              <div class="textarea-wrap">
+                <textarea id="noteInput" maxlength="1000" placeholder="写下关于这张图片的想法…"></textarea>
+                <div class="count-row"><span id="noteError"></span><span id="noteCount">0/1000</span></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Generic dialog -->
+        <div class="dialog-wrap" id="dialogWrap" role="dialog" aria-modal="true">
+          <div class="dialog">
+            <div class="dialog-content">
+              <h3 id="dialogTitle"></h3><p id="dialogText"></p>
+              <input class="dialog-input hidden" id="dialogInput" placeholder="">
+            </div>
+            <div class="dialog-actions" id="dialogActions"></div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast" role="status"></div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // === Mock state ===
+    const state = {
+      currentPage: 'photos',
+      uploadMode: 'idle',
+      uploadTimer: null,
+      uploaded: false,
+      noteSaved: false,
+      dialogConfirm: null
+    };
+
+    const uploadTasks = [
+      { scene: 'coast', label: '海边.jpg', progress: 0, status: '待处理' },
+      { scene: 'book', label: '书页.jpg', progress: 0, status: '待处理' },
+      { scene: 'plant', label: '绿植.jpg', progress: 0, status: '待处理' },
+      { scene: 'city', label: '街景.jpg', progress: 0, status: '待处理' },
+      { scene: 'desk', label: '工作台.jpg', progress: 0, status: '待处理' },
+      { scene: 'food', label: '早午餐.png', progress: 0, status: '待处理' }
+    ];
+
+    const pageIds = ['launch','photos','detail','notes','settings','deleting'];
+
+    function $(selector, root = document) { return root.querySelector(selector); }
+    function $$(selector, root = document) { return [...root.querySelectorAll(selector)]; }
+
+    function showPage(page) {
+      if (!pageIds.includes(page)) return;
+      $$('.page').forEach(el => el.classList.toggle('is-active', el.id === `page-${page}`));
+      $$('.review-nav [data-page]').forEach(el => el.classList.toggle('is-active', el.dataset.page === page));
+      state.currentPage = page;
+      $('#statusbar').classList.toggle('is-dark', page === 'detail');
+      closeActionSheet();
+      window.location.hash = page;
+    }
+
+    function showToast(message) {
+      const toast = $('#toast');
+      toast.textContent = message;
+      toast.classList.add('is-open');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove('is-open'), 2200);
+    }
+
+    function openActionSheet(title, options) {
+      const body = $('#actionSheetBody');
+      body.innerHTML = `<div class="sheet-title">${title}</div>` +
+        options.map((option, index) =>
+          `<button class="sheet-option ${option.selected ? 'is-selected' : ''}" data-sheet-index="${index}">${option.icon ? `<span>${option.icon}</span>` : ''}${option.label}</button>`
+        ).join('') +
+        `<button class="sheet-option sheet-cancel" data-sheet-cancel>取消</button>`;
+      body.querySelectorAll('[data-sheet-index]').forEach(button => {
+        button.addEventListener('click', () => {
+          const option = options[Number(button.dataset.sheetIndex)];
+          closeActionSheet();
+          option.action?.();
+        });
+      });
+      $('[data-sheet-cancel]', body).addEventListener('click', closeActionSheet);
+      $('#actionSheet').classList.add('is-open');
+    }
+
+    function closeActionSheet() { $('#actionSheet').classList.remove('is-open'); }
+
+    function openAddSheet() {
+      openActionSheet('选择图片来源', [
+        { label: '从相册选择', icon: '▧', action: openUpload },
+        { label: '拍照', icon: '◉', action: () => { showToast('已模拟拍摄 1 张图片'); openUpload(); } }
+      ]);
+    }
+
+    function renderUploadTasks() {
+      $('#uploadGrid').innerHTML = uploadTasks.map((task, index) => {
+        const isBusy = ['压缩中','上传中'].includes(task.status);
+        const isSuccess = task.status === '成功';
+        const isError = task.status.includes('失败');
+        return `<article class="upload-task">
+          <div class="upload-thumb">
+            <div class="photo-art scene-${task.scene}"></div>
+            ${isBusy ? `<div class="task-overlay"><span>${task.status} ${task.progress}%</span><span class="task-progress"><i style="--progress:${task.progress}%"></i></span></div>` : ''}
+            ${isSuccess ? `<div class="task-overlay" style="background:rgba(0,168,112,.72);font-size:24px;">✓</div>` : ''}
+            ${isError ? `<div class="task-overlay" style="background:rgba(213,73,65,.72);font-size:22px;">!</div>` : ''}
+          </div>
+          <div class="task-state ${isError ? 'is-error' : ''}">${task.label}<br>${task.status}${isError ? ` · <button class="td-button text" style="min-height:auto;padding:0;font-size:10px;" data-retry="${index}">重试</button>` : ''}</div>
+        </article>`;
+      }).join('');
+      $$('[data-retry]', $('#uploadGrid')).forEach(button => button.addEventListener('click', () => retryTask(Number(button.dataset.retry))));
+      const done = uploadTasks.filter(task => task.status === '成功').length;
+      const failed = uploadTasks.filter(task => task.status.includes('失败')).length;
+      const busy = uploadTasks.filter(task => ['压缩中','上传中'].includes(task.status)).length;
+      $('#uploadSummary').textContent = state.uploadMode === 'idle' ? '等待开始' : `成功 ${done} · 进行中 ${busy} · 失败 ${failed}`;
+      $('#uploadPrimary').textContent = failed ? '重试失败项' : done === uploadTasks.length ? '完成' : '开始上传';
+    }
+
+    function resetUpload() {
+      clearInterval(state.uploadTimer);
+      state.uploadMode = 'idle';
+      uploadTasks.forEach(task => { task.progress = 0; task.status = '待处理'; });
+      renderUploadTasks();
+    }
+
+    function openUpload(failPreset = false) {
+      resetUpload();
+      $('#uploadOverlay').classList.add('is-open');
+      if (failPreset) {
+        uploadTasks.forEach((task, index) => {
+          task.progress = index < 3 ? 100 : index === 3 ? 72 : 0;
+          task.status = index < 3 ? '成功' : index === 3 ? '上传失败：网络中断' : '待上传';
+        });
+        state.uploadMode = 'failed';
+        renderUploadTasks();
+      }
+    }
+
+    function startUpload() {
+      if (uploadTasks.every(task => task.status === '成功')) {
+        $('#uploadOverlay').classList.remove('is-open');
+        state.uploaded = true;
+        showPage('photos');
+        showToast('已成功上传 6 张图片');
+        return;
+      }
+      if (uploadTasks.some(task => task.status.includes('失败'))) {
+        uploadTasks.filter(task => task.status.includes('失败')).forEach(task => { task.status = '上传中'; task.progress = 12; });
+      } else {
+        const pendingTasks = uploadTasks.filter(task => task.status !== '成功');
+        pendingTasks.forEach((task, index) => {
+          task.status = index < 3 ? '上传中' : '待上传';
+          task.progress = index < 3 ? 8 : 0;
+        });
+      }
+      state.uploadMode = 'uploading';
+      renderUploadTasks();
+      clearInterval(state.uploadTimer);
+      state.uploadTimer = setInterval(() => {
+        let active = uploadTasks.filter(task => task.status === '上传中').slice(0, 3);
+        active.forEach(task => task.progress = Math.min(100, task.progress + 17));
+        active.filter(task => task.progress >= 100).forEach(task => task.status = '成功');
+        const available = 3 - uploadTasks.filter(task => task.status === '上传中').length;
+        uploadTasks.filter(task => task.status === '待上传').slice(0, available).forEach(task => { task.status = '上传中'; task.progress = 6; });
+        renderUploadTasks();
+        if (uploadTasks.every(task => task.status === '成功')) {
+          clearInterval(state.uploadTimer);
+          state.uploadMode = 'done';
+          showToast('6 张图片全部上传成功');
+        }
+      }, 420);
+    }
+
+    function retryTask(index) {
+      uploadTasks[index].status = '上传中';
+      uploadTasks[index].progress = 15;
+      state.uploadMode = 'uploading';
+      renderUploadTasks();
+      const timer = setInterval(() => {
+        uploadTasks[index].progress = Math.min(100, uploadTasks[index].progress + 22);
+        if (uploadTasks[index].progress >= 100) {
+          uploadTasks[index].status = '成功';
+          clearInterval(timer);
+          showToast('重试成功，未生成重复图片');
+        }
+        renderUploadTasks();
+      }, 300);
+    }
+
+    function attemptCloseUpload() {
+      const unfinished = uploadTasks.some(task => task.status !== '成功');
+      if (!unfinished) { $('#uploadOverlay').classList.remove('is-open'); return; }
+      openDialog({
+        title: '取消未完成的上传？',
+        text: '已成功上传的图片会保留，其他任务将被取消。',
+        confirmText: '确认关闭',
+        danger: true,
+        onConfirm: () => {
+          clearInterval(state.uploadTimer);
+          $('#uploadOverlay').classList.remove('is-open');
+          showToast('未完成任务已取消');
+        }
+      });
+    }
+
+    function openEditor(mode = 'normal') {
+      $('#editorOverlay').classList.add('is-open');
+      $('#editorMessage').classList.toggle('hidden', mode !== 'failure');
+      if (mode === 'failure') $('#noteInput').value = '这段内容在网络失败后仍然保留，用户可以继续编辑并重试。';
+      updateNoteCount();
+      setTimeout(() => $('#noteInput').focus(), 160);
+    }
+
+    function closeEditor() {
+      if ($('#noteInput').value.trim()) {
+        openDialog({
+          title: '放弃本次编辑？',
+          text: '尚未保存的备注内容将会丢失。',
+          confirmText: '放弃',
+          danger: true,
+          onConfirm: () => { $('#editorOverlay').classList.remove('is-open'); $('#noteInput').value = ''; updateNoteCount(); }
+        });
+      } else {
+        $('#editorOverlay').classList.remove('is-open');
+      }
+    }
+
+    function updateNoteCount() {
+      const length = Array.from($('#noteInput').value).length;
+      $('#noteCount').textContent = `${length}/1000`;
+      $('#noteCount').classList.toggle('is-error', length >= 950);
+      $('#noteError').textContent = '';
+      $('#noteError').className = '';
+    }
+
+    function saveNote() {
+      const value = $('#noteInput').value.trim();
+      if (!value) {
+        $('#noteError').textContent = '请输入备注内容';
+        $('#noteError').className = 'input-error';
+        return;
+      }
+      const button = $('#saveNoteBtn');
+      button.textContent = '保存中…';
+      button.disabled = true;
+      setTimeout(() => {
+        button.textContent = '保存';
+        button.disabled = false;
+        $('#editorOverlay').classList.remove('is-open');
+        $('#noteInput').value = '';
+        updateNoteCount();
+        state.noteSaved = true;
+        $('#detailNoteCount').textContent = '4';
+        showToast('备注已保存');
+      }, 650);
+    }
+
+    function openSortSheet() {
+      const labels = ['备注时间 · 最新','备注时间 · 最早','拍摄时间 · 最新','拍摄时间 · 最早'];
+      openActionSheet('备注排序', labels.map(label => ({
+        label,
+        selected: $('#sortLabel').textContent === label,
+        action: () => { $('#sortLabel').textContent = label; showToast(`已按${label.replace(' · ','，')}排序`); }
+      })));
+    }
+
+    function openPhotoActions() {
+      openActionSheet('图片操作', [
+        { label: '重新加载图片', icon: '↻', action: () => showToast('图片已重新加载') },
+        { label: '删除图片', icon: '⌫', action: openDeletePhoto }
+      ]);
+    }
+
+    function openNoteActions() {
+      openActionSheet('备注操作', [
+        { label: '编辑备注', icon: '✎', action: () => openEditor() },
+        { label: '删除备注', icon: '⌫', action: () => openDialog({
+          title: '永久删除这条备注？',
+          text: '删除后无法恢复。',
+          confirmText: '删除',
+          danger: true,
+          onConfirm: () => showToast('备注已删除')
+        })}
+      ]);
+    }
+
+    function openDeletePhoto() {
+      openDialog({
+        title: '永久删除这张图片？',
+        text: '将同时删除关联的 3 条备注。\n删除后无法恢复。',
+        confirmText: '删除图片',
+        danger: true,
+        onConfirm: () => { showPage('photos'); showToast('图片及 3 条备注已删除'); }
+      });
+    }
+
+    function openLogoutStep1() {
+      openDialog({
+        title: '注销账号',
+        text: '账号、全部图片、备注和微信身份绑定将被永久删除。\n<strong>注销后无法恢复。</strong>',
+        confirmText: '我已了解，继续',
+        danger: true,
+        onConfirm: openLogoutStep2,
+        allowHtml: true
+      });
+    }
+
+    function openLogoutStep2() {
+      openDialog({
+        title: '输入文字确认注销',
+        text: '请输入“确认注销”完成最后确认。',
+        input: true,
+        placeholder: '确认注销',
+        confirmText: '永久注销',
+        danger: true,
+        validate: value => value === '确认注销',
+        onConfirm: () => showPage('deleting')
+      });
+    }
+
+    function openConflictDialog() {
+      openDialog({
+        title: '备注已在其他设备更新',
+        text: '你的本地修改已保留。请选择加载云端最新内容，或明确覆盖保存。',
+        actions: [
+          { label: '取消', action: closeDialog },
+          { label: '加载最新内容', action: () => { closeDialog(); openEditor(); $('#noteInput').value = '这是云端设备刚刚保存的最新内容。'; updateNoteCount(); } },
+          { label: '继续提交', danger: true, action: () => { closeDialog(); openEditor(); showToast('再次保存时将使用最新版本覆盖'); } }
+        ]
+      });
+    }
+
+    function openDialog(config) {
+      $('#dialogTitle').textContent = config.title;
+      if (config.allowHtml) $('#dialogText').innerHTML = config.text;
+      else $('#dialogText').textContent = config.text;
+      const input = $('#dialogInput');
+      input.classList.toggle('hidden', !config.input);
+      input.value = '';
+      input.placeholder = config.placeholder || '';
+      const actions = $('#dialogActions');
+      actions.classList.toggle('vertical', Boolean(config.actions));
+      if (config.actions) {
+        actions.innerHTML = config.actions.map((action, index) =>
+          `<button class="${action.danger ? 'danger-action' : ''}" data-dialog-action="${index}">${action.label}</button>`
+        ).join('');
+        $$('[data-dialog-action]', actions).forEach(button => button.addEventListener('click', () => config.actions[Number(button.dataset.dialogAction)].action()));
+      } else {
+        actions.innerHTML = `<button data-dialog-cancel>取消</button><button data-dialog-confirm class="${config.danger ? 'danger-action' : ''}">${config.confirmText || '确定'}</button>`;
+        $('[data-dialog-cancel]', actions).addEventListener('click', closeDialog);
+        const confirm = $('[data-dialog-confirm]', actions);
+        if (config.validate) {
+          confirm.disabled = true;
+          input.addEventListener('input', () => confirm.disabled = !config.validate(input.value), { once: false });
+        }
+        confirm.addEventListener('click', () => { closeDialog(); config.onConfirm?.(input.value); });
+      }
+      $('#dialogWrap').classList.add('is-open');
+      if (config.input) setTimeout(() => input.focus(), 120);
+    }
+
+    function closeDialog() { $('#dialogWrap').classList.remove('is-open'); }
+
+    function setPhotosState(mode) {
+      showPage('photos');
+      ['photosNormal','photosEmpty','photosLoading','photosError'].forEach(id => $(`#${id}`).classList.add('hidden'));
+      const mapping = { normal:'photosNormal', empty:'photosEmpty', loading:'photosLoading', error:'photosError' };
+      $(`#${mapping[mode] || 'photosNormal'}`).classList.remove('hidden');
+      $('.fab').classList.toggle('hidden', mode !== 'normal');
+      $('#spaceNotice').classList.add('hidden');
+    }
+
+    function openDetail(scene = 'coast', highlight = false) {
+      const image = $('#detailImage');
+      image.className = `photo-art scene-${scene}`;
+      image.innerHTML = `<span class="photo-label">${scene === 'book' ? '读书摘录' : scene === 'desk' ? '工作台灵感' : '周末海边'}</span>`;
+      $('#detailNotes').classList.remove('hidden');
+      $('#detailEmpty').classList.add('hidden');
+      showPage('detail');
+      if (highlight) {
+        setTimeout(() => {
+          $('#targetNote').classList.add('is-highlight');
+          $('#targetNote').scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => $('#targetNote').classList.remove('is-highlight'), 1600);
+        }, 180);
+      }
+    }
+
+    // === Event binding ===
+    document.addEventListener('click', event => {
+      const target = event.target.closest('button,[data-open-detail],[data-open-note]');
+      if (!target) return;
+      if (target.dataset.page) showPage(target.dataset.page);
+      if ('addPhoto' in target.dataset) openAddSheet();
+      if ('openDetail' in target.dataset) openDetail(target.dataset.openDetail);
+      if ('openNote' in target.dataset) openDetail('coast', true);
+      if ('stateReset' in target.dataset) setPhotosState('normal');
+      if ('startUpload' in target.dataset) startUpload();
+      if ('closeUpload' in target.dataset) attemptCloseUpload();
+      if ('continueSelect' in target.dataset) showToast('可继续选择，当前批次上限 20 张');
+      if ('closeEditor' in target.dataset) closeEditor();
+      if ('saveNote' in target.dataset) saveNote();
+      if (target.dataset.demo) {
+        const demo = target.dataset.demo;
+        if (demo === 'upload') openUpload();
+        if (demo === 'editor') openEditor();
+        if (demo === 'sort') openSortSheet();
+        if (demo === 'photo-actions') openPhotoActions();
+        if (demo === 'note-actions') openNoteActions();
+        if (demo === 'logout-step1') openLogoutStep1();
+        if (demo === 'upload-fail') openUpload(true);
+        if (demo === 'conflict') openConflictDialog();
+        if (demo === 'delete-photo') openDeletePhoto();
+      }
+      if (target.dataset.state) {
+        const demoState = target.dataset.state;
+        if (demoState.startsWith('photos-')) setPhotosState(demoState.replace('photos-',''));
+        if (demoState === 'space-warning') { setPhotosState('normal'); $('#spaceNotice').classList.remove('hidden'); }
+        if (demoState === 'notes-empty') { showPage('notes'); $('#notesNormal').classList.add('hidden'); $('#notesEmpty').classList.remove('hidden'); }
+      }
+    });
+
+    $('#noteInput').addEventListener('input', updateNoteCount);
+    $('#actionSheet').addEventListener('click', event => { if (event.target === $('#actionSheet')) closeActionSheet(); });
+    // High-risk Dialog and Popup overlays intentionally do not close on backdrop click.
+
+    const initialHash = window.location.hash.replace('#','');
+    if (pageIds.includes(initialHash)) showPage(initialHash);
+    renderUploadTasks();
+  </script>
+</body>
+</html>
