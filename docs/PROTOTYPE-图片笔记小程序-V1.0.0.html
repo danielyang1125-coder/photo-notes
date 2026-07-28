@@ -236,6 +236,24 @@
       border-radius: 50%; font-size: 28px; box-shadow: 0 8px 22px rgba(0,82,217,.32);
     }
     .page-error { padding-top: 74px; }
+    .tag-filter-shell { position: sticky; z-index: 9; top: 52px; background: rgba(255,255,255,.97); border-bottom: 1px solid var(--td-border); }
+    .tag-filter {
+      min-height: 52px; padding: 4px 16px; display: flex; gap: 8px; align-items: center;
+      overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none;
+    }
+    .tag-filter::-webkit-scrollbar { display: none; }
+    .filter-chip, .filter-action {
+      flex: 0 0 auto; min-height: 44px; max-width: 112px; padding: 0 13px; display: inline-flex;
+      align-items: center; justify-content: center; overflow: hidden; color: var(--td-text-secondary);
+      background: transparent; border-radius: 22px; font-size: 13px; white-space: nowrap; text-overflow: ellipsis;
+    }
+    .filter-chip::before { content: ""; width: 0; overflow: hidden; }
+    .filter-chip.is-active { color: var(--td-brand); background: var(--td-brand-light); font-weight: 600; }
+    .filter-chip.is-active::before { content: "✓"; width: 16px; margin-right: 3px; }
+    .filter-action { color: var(--td-brand); border-radius: 8px; font-weight: 500; }
+    .filter-skeleton { width: 72px; height: 28px; flex: 0 0 auto; border-radius: 14px; background: linear-gradient(90deg,#e8eaed 25%,#f5f6f7 37%,#e8eaed 63%); background-size: 400% 100%; animation: shimmer 1.35s infinite; }
+    .tag-filter-error { min-height: 44px; padding: 7px 16px; display: flex; align-items: center; justify-content: space-between; color: var(--td-danger); font-size: 12px; }
+    .filter-empty { min-height: 360px; }
 
     /* === PG-004 detail === */
     .detail-page { padding-top: 44px; background: #fff; }
@@ -246,6 +264,12 @@
     .image-stage .photo-art { width: 100%; height: 100%; }
     .image-hint { position: absolute; right: 12px; bottom: 10px; padding: 4px 8px; color: #fff; background: rgba(0,0,0,.45); border-radius: 10px; font-size: 10px; }
     .notes-panel { min-height: 360px; padding: 18px 16px 30px; background: #fff; border-radius: 16px 16px 0 0; }
+    .photo-tags { padding: 15px 16px 14px; background: #fff; border-bottom: 1px solid var(--td-border); }
+    .photo-tags-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+    .photo-tags-head strong { font-size: 14px; }
+    .photo-tags-list { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; min-height: 28px; }
+    .tag-display { min-height: 28px; padding: 4px 9px; display: inline-flex; align-items: center; color: var(--td-text-secondary); background: var(--td-page); border-radius: 6px; font-size: 12px; }
+    .tag-muted { color: var(--td-text-placeholder); font-size: 13px; }
     .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .section-head h3 { margin: 0; font-size: 16px; }
     .section-head > .td-button { display: inline-flex !important; color: transparent !important; font-size: 0; }
@@ -295,6 +319,15 @@
     .progress-value { height: 100%; width: 78%; background: var(--td-brand); border-radius: 4px; }
     .danger-zone { padding: 24px 16px; }
 
+    /* === PG-009 tags manager === */
+    .tag-manager-toolbar { padding: 14px 16px 10px; background: #fff; }
+    .tag-manager-list { background: #fff; border-top: 1px solid var(--td-border); }
+    .tag-manager-row { min-height: 64px; padding: 10px 8px 10px 16px; display: grid; grid-template-columns: 1fr 44px; align-items: center; border-bottom: 1px solid var(--td-border); }
+    .tag-manager-main { min-width: 0; text-align: left; background: transparent; }
+    .tag-manager-name { display: block; margin-bottom: 4px; font-size: 15px; font-weight: 500; }
+    .tag-manager-count { color: var(--td-text-placeholder); font-size: 12px; }
+    .tag-manager-more { width: 44px; height: 44px; color: var(--td-text-secondary); background: transparent; border-radius: 50%; letter-spacing: 1px; }
+
     /* === PG-008 deleting === */
     .deleting-page { background: #fff; }
     .result-wrap { min-height: 720px; padding: 80px 28px 30px; display: grid; align-content: center; justify-items: center; text-align: center; }
@@ -343,6 +376,8 @@
     .task-state { min-height: 31px; margin-top: 5px; color: var(--td-text-secondary); font-size: 10px; line-height: 14px; }
     .task-state.is-error { color: var(--td-danger); }
     .upload-actions { position: sticky; bottom: 0; padding: 12px 16px 20px; display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; background: #fff; border-top: 1px solid var(--td-border); }
+    .upload-tag-result { margin: 2px 16px 8px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; color: #087554; background: #e8f7f2; border-radius: 8px; font-size: 12px; }
+    .upload-tag-cta { margin: 2px 16px 8px; }
     .editor-body { padding: 16px 16px 28px; }
     .message-error { margin-bottom: 12px; padding: 10px 12px; color: #9f2d28; background: #fff0ef; border-radius: 8px; font-size: 12px; }
     .textarea-wrap { border: 1px solid var(--td-border); border-radius: 10px; overflow: hidden; transition: border .15s; }
@@ -351,6 +386,25 @@
     .count-row { padding: 0 12px 10px; display: flex; justify-content: space-between; color: var(--td-text-placeholder); font-size: 11px; }
     .count-row .is-error { color: var(--td-danger); }
     .input-error { color: var(--td-danger); }
+    .tag-picker-body { padding: 14px 16px 24px; }
+    .tag-picker-summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: var(--td-text-secondary); font-size: 12px; }
+    .tag-picker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .tag-choice {
+      min-height: 44px; padding: 9px 11px; display: flex; align-items: center; justify-content: space-between;
+      color: var(--td-text-secondary); background: var(--td-page); border: 1px solid transparent; border-radius: 8px; text-align: left;
+    }
+    .tag-choice.is-selected { color: var(--td-brand); background: var(--td-brand-light); border-color: #91b9f7; font-weight: 600; }
+    .tag-choice.is-selected::after { content: "✓"; }
+    .tag-choice:disabled { color: var(--td-text-placeholder); background: #f6f6f6; cursor: not-allowed; }
+    .tag-limit-tip { min-height: 20px; margin: 9px 0 2px; color: var(--td-warning); font-size: 11px; }
+    .tag-create-box { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--td-border); }
+    .tag-create-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
+    .tag-input-wrap { min-width: 0; }
+    .tag-input { width: 100%; height: 44px; padding: 0 11px; border: 1px solid var(--td-border); border-radius: 8px; outline: 0; }
+    .tag-input:focus { border-color: var(--td-brand); box-shadow: 0 0 0 2px rgba(0,82,217,.08); }
+    .tag-input.is-error { border-color: var(--td-danger); }
+    .tag-input-meta { min-height: 18px; padding-top: 4px; display: flex; justify-content: space-between; color: var(--td-text-placeholder); font-size: 10px; }
+    .tag-input-meta .is-error { color: var(--td-danger); }
     .dialog-wrap { display: none; position: absolute; z-index: 80; inset: 0; place-items: center; padding: 28px; background: rgba(0,0,0,.54); }
     .dialog-wrap.is-open { display: grid; animation: fade-in .16s ease-out; }
     .dialog {
@@ -413,6 +467,8 @@
         <button data-page="notes"><span>备注列表</span><small>PG-006</small></button>
         <button data-page="settings"><span>设置与隐私</span><small>PG-007</small></button>
         <button data-page="deleting"><span>注销处理中</span><small>PG-008</small></button>
+        <button data-page="tags"><span>标签管理</span><small>PG-009</small></button>
+        <button data-demo="tag-picker"><span>标签选择与创建层</span><small>PG-010</small></button>
       </nav>
 
       <div class="review-title">状态演示</div>
@@ -427,10 +483,20 @@
         <button data-demo="conflict">备注冲突</button>
         <button data-state="notes-empty">备注空态</button>
         <button data-demo="delete-photo">删除图片</button>
+        <button data-state="tag-filter-error">标签区错误</button>
+        <button data-state="tag-filter-loading">标签区加载</button>
+        <button data-state="tag-filter-zero">零标签入口</button>
+        <button data-state="tag-empty">标签空结果</button>
+        <button data-demo="tag-limit">标签 5 个上限</button>
+        <button data-demo="tag-save-fail">标签保存失败</button>
+        <button data-demo="tag-picker-empty">标签选择空态</button>
+        <button data-state="tags-loading">标签管理加载</button>
+        <button data-state="tags-empty">标签管理空态</button>
+        <button data-state="tags-error">标签管理错误</button>
       </div>
 
       <div class="review-tip">
-        建议按主流程评审：点击手机内“+” → 相册选择 → 开始上传 → 完成 → 打开图片 → 添加备注 → 切换备注 Tab。
+        建议按主流程评审：标签筛选 → 打开图片 → 编辑标签；或“+” → 上传完成 → 为本批图片添加标签 → 标签管理。
       </div>
     </aside>
 
@@ -458,6 +524,10 @@
               <div class="nav-title">图片</div>
               <div class="nav-side"><button class="icon-btn" data-page="settings" aria-label="设置">⚙</button></div>
             </header>
+            <div class="tag-filter-shell">
+              <div class="tag-filter" id="tagFilter" aria-label="图片标签筛选"></div>
+              <div class="tag-filter-error hidden" id="tagFilterError"><span>标签加载失败，全部图片仍可浏览</span><button class="td-button text" data-retry-tags>重试</button></div>
+            </div>
             <div id="spaceNotice" class="td-notice hidden"><span>⚠</span><span>已使用 425 MB，空间即将用完。删除不需要的图片可释放空间。</span></div>
             <div id="photosNormal" class="gallery-wrap">
               <div class="gallery">
@@ -507,6 +577,11 @@
               <div class="empty-art"></div><h3>图片加载失败</h3><p>网络开了个小差，已上传的内容不会丢失</p>
               <button class="td-button" data-state-reset>重新加载</button>
             </div>
+            <div id="tagResultEmpty" class="td-empty filter-empty hidden">
+              <div class="empty-art"></div><h3 id="tagEmptyTitle">这个标签下还没有图片</h3>
+              <p id="tagEmptyText">可以为图片添加当前标签，或先查看全部图片</p>
+              <button class="td-button outline" data-filter="all">查看全部图片</button>
+            </div>
             <button class="fab" data-add-photo aria-label="添加图片">＋</button>
             <nav class="td-tabbar" aria-label="主导航">
               <button class="tab-item is-active" data-page="photos"><span class="tab-icon">▧</span><span>图片</span></button>
@@ -525,6 +600,10 @@
               <div id="detailImage" class="photo-art scene-coast"><span class="photo-label">周末海边</span></div>
               <span class="image-hint">双指缩放查看</span>
             </div>
+            <section class="photo-tags" aria-label="图片标签">
+              <div class="photo-tags-head"><strong>标签</strong><button class="td-button text" data-demo="tag-picker">编辑</button></div>
+              <div class="photo-tags-list" id="detailTags"></div>
+            </section>
             <div class="notes-panel">
               <div class="section-head"><h3>备注（<span id="detailNoteCount">3</span>）</h3><button class="td-button text" data-demo="editor">＋ 添加备注</button></div>
               <div id="detailNotes">
@@ -550,6 +629,20 @@
                 <button class="td-button" data-demo="editor">添加第一条备注</button>
               </div>
             </div>
+          </section>
+
+          <!-- PG-009 -->
+          <section class="page" id="page-tags">
+            <header class="td-navbar">
+              <div class="nav-side"><button class="icon-btn" data-page="photos" aria-label="返回图片列表">‹</button></div>
+              <div class="nav-title">全部标签</div>
+              <div class="nav-side"></div>
+            </header>
+            <div class="tag-manager-toolbar"><button class="td-button block" data-create-tag>＋ 新建标签</button></div>
+            <div id="tagsNormal" class="tag-manager-list"></div>
+            <div id="tagsLoading" class="skeleton hidden"><i class="sk" style="display:block;min-height:58px;margin-bottom:8px"></i><i class="sk" style="display:block;min-height:58px;margin-bottom:8px"></i><i class="sk" style="display:block;min-height:58px"></i></div>
+            <div id="tagsEmpty" class="td-empty hidden"><div class="empty-art"></div><h3>还没有标签</h3><p>创建标签后可按主题整理图片</p><button class="td-button" data-create-tag>新建标签</button></div>
+            <div id="tagsError" class="td-empty hidden"><div class="empty-art"></div><h3>标签加载失败</h3><p>网络开了个小差，点击重新加载</p><button class="td-button" data-tags-retry>重新加载</button></div>
           </section>
 
           <!-- PG-006 -->
@@ -614,7 +707,7 @@
               <div class="group-title">数据与隐私</div>
               <div class="cell-group">
                 <div class="td-cell"><span class="cell-icon">▧</span><span class="cell-main"><span class="cell-title">图片存储说明</span><span class="cell-desc">云端不保存原图，压缩后细节不可恢复</span></span><span class="cell-right">›</span></div>
-                <div class="td-cell"><span class="cell-icon">◉</span><span class="cell-main"><span class="cell-title">隐私说明</span><span class="cell-desc">图片与备注仅本人可见</span></span><span class="cell-right">›</span></div>
+                <div class="td-cell"><span class="cell-icon">◉</span><span class="cell-main"><span class="cell-title">隐私说明</span><span class="cell-desc">图片、备注与标签仅本人可见</span></span><span class="cell-right">›</span></div>
                 <div class="td-cell"><span class="cell-icon">◎</span><span class="cell-main"><span class="cell-title">权限用途</span><span class="cell-desc">仅在选择图片或拍照时申请</span></span><span class="cell-right">›</span></div>
               </div>
               <div class="group-title">关于</div>
@@ -628,7 +721,7 @@
             <div class="result-wrap">
               <div class="result-icon">↻</div>
               <h2>账号正在注销</h2>
-              <p>账号已冻结，系统正在永久清理全部图片、备注与微信身份绑定。该操作不可撤销，请耐心等待。</p>
+              <p>账号已冻结，系统正在永久清理全部图片、备注、标签、关联关系与微信身份绑定。该操作不可撤销，请耐心等待。</p>
               <button class="td-button outline">联系客服</button>
             </div>
           </section>
@@ -647,9 +740,36 @@
             </header>
             <div class="upload-summary"><strong>当前批次 <span id="uploadCount">6</span>/20</strong><span id="uploadSummary">等待开始</span></div>
             <div class="upload-grid" id="uploadGrid"></div>
+            <div class="upload-tag-cta hidden" id="uploadTagCta"><button class="td-button outline block" data-demo="batch-tag-picker">为本批图片添加标签</button></div>
+            <div class="upload-tag-result hidden" id="uploadTagResult"><span id="uploadTagText">已为 6 张图片添加标签</span><span>✓</span></div>
             <div class="upload-actions">
               <button class="td-button outline" data-continue-select>继续选择</button>
               <button class="td-button" id="uploadPrimary" data-start-upload>开始上传</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- PG-010 Tag picker -->
+        <div class="overlay" id="tagPickerOverlay" role="dialog" aria-modal="true" aria-label="编辑标签">
+          <section class="popup">
+            <header class="popup-head">
+              <button class="td-button text" data-close-tag-picker>取消</button><h3 id="tagPickerTitle">编辑标签</h3>
+              <button class="td-button text" id="saveTagsBtn" data-save-tags>保存</button>
+            </header>
+            <div class="tag-picker-body">
+              <div id="tagPickerMessage" class="message-error hidden">标签保存失败，请重试。你的选择已保留。</div>
+              <div class="tag-picker-summary"><span>选择标签</span><strong id="tagSelectedCount">已选 0/5</strong></div>
+              <div class="tag-picker-grid" id="tagPickerGrid"></div>
+              <div class="tag-limit-tip" id="tagLimitTip"></div>
+              <div class="tag-create-box">
+                <div class="tag-create-row">
+                  <div class="tag-input-wrap">
+                    <input class="tag-input" id="tagNameInput" maxlength="12" placeholder="新建标签，最多 12 个字符">
+                    <div class="tag-input-meta"><span id="tagNameError"></span><span id="tagNameCount">0/12</span></div>
+                  </div>
+                  <button class="td-button outline" data-submit-tag>新建</button>
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -695,8 +815,23 @@
       uploadTimer: null,
       uploaded: false,
       noteSaved: false,
-      dialogConfirm: null
+      dialogConfirm: null,
+      activeFilter: 'all',
+      pickerContext: 'detail',
+      pickerSelected: [],
+      pickerInitial: [],
+      detailTagIds: ['reading', 'product'],
+      tagSaveFailureDemo: false
     };
+
+    let tags = [
+      { id: 'reading', name: '读书', count: 12 },
+      { id: 'travel', name: '旅行', count: 8 },
+      { id: 'product', name: '产品设计', count: 6 },
+      { id: 'inspiration', name: '灵感', count: 4 },
+      { id: 'work', name: '工作', count: 3 },
+      { id: 'receipt', name: '票据', count: 2 }
+    ];
 
     const uploadTasks = [
       { scene: 'coast', label: '海边.jpg', progress: 0, status: '待处理' },
@@ -707,7 +842,7 @@
       { scene: 'food', label: '早午餐.png', progress: 0, status: '待处理' }
     ];
 
-    const pageIds = ['launch','photos','detail','notes','settings','deleting'];
+    const pageIds = ['launch','photos','detail','notes','settings','deleting','tags'];
 
     function $(selector, root = document) { return root.querySelector(selector); }
     function $$(selector, root = document) { return [...root.querySelectorAll(selector)]; }
@@ -718,6 +853,7 @@
       $$('.review-nav [data-page]').forEach(el => el.classList.toggle('is-active', el.dataset.page === page));
       state.currentPage = page;
       $('#statusbar').classList.toggle('is-dark', page === 'detail');
+      if (page === 'tags') renderTagManager();
       closeActionSheet();
       window.location.hash = page;
     }
@@ -757,6 +893,206 @@
       ]);
     }
 
+    function renderTagFilter() {
+      const system = [
+        { id: 'all', name: '全部' },
+        { id: 'uncategorized', name: '未分类' }
+      ];
+      const visible = tags.slice(0, 5);
+      const action = tags.length === 0
+        ? '<button class="filter-action" data-create-tag>＋ 新建标签</button>'
+        : tags.length <= 5
+          ? '<button class="filter-action" data-page="tags">管理 ›</button>'
+          : '<button class="filter-action" data-page="tags">更多 ›</button>';
+      $('#tagFilter').innerHTML = [...system, ...visible].map(tag =>
+        `<button class="filter-chip ${state.activeFilter === tag.id ? 'is-active' : ''}" data-filter="${tag.id}" title="${tag.name}">${tag.name}</button>`
+      ).join('') + action;
+    }
+
+    function applyFilter(filterId) {
+      state.activeFilter = filterId;
+      renderTagFilter();
+      setPhotosState('normal');
+      state.activeFilter = filterId;
+      renderTagFilter();
+      const selectedTag = tags.find(tag => tag.id === filterId);
+      const isEmpty = (selectedTag && selectedTag.count === 0) || (filterId === 'uncategorized' && state.detailTagIds.length === 0);
+      $('#photosNormal').classList.toggle('hidden', isEmpty);
+      $('#tagResultEmpty').classList.toggle('hidden', !isEmpty);
+      if (isEmpty) {
+        $('#tagEmptyTitle').textContent = filterId === 'uncategorized' ? '所有图片都已添加标签' : '这个标签下还没有图片';
+        $('#tagEmptyText').textContent = filterId === 'uncategorized' ? '可以继续浏览全部图片' : '可以为图片添加当前标签，或先查看全部图片';
+      }
+    }
+
+    function renderDetailTags() {
+      const selected = tags.filter(tag => state.detailTagIds.includes(tag.id));
+      $('#detailTags').innerHTML = selected.length
+        ? selected.map(tag => `<span class="tag-display">${tag.name}</span>`).join('')
+        : '<span class="tag-muted">还没有标签</span><button class="td-button text" data-demo="tag-picker">添加标签</button>';
+      $('.photo-tags-head .td-button').textContent = selected.length ? '编辑' : '添加';
+    }
+
+    function renderTagManager() {
+      $('#tagsLoading').classList.add('hidden');
+      $('#tagsError').classList.add('hidden');
+      $('#tagsNormal').innerHTML = tags.map(tag => `
+        <div class="tag-manager-row">
+          <button class="tag-manager-main" data-manager-filter="${tag.id}">
+            <span class="tag-manager-name">${tag.name}</span><span class="tag-manager-count">${tag.count} 张图片</span>
+          </button>
+          <button class="tag-manager-more" data-tag-more="${tag.id}" aria-label="${tag.name}更多操作">•••</button>
+        </div>`).join('');
+      $('#tagsNormal').classList.toggle('hidden', tags.length === 0);
+      $('#tagsEmpty').classList.toggle('hidden', tags.length !== 0);
+    }
+
+    function openTagPicker(context = 'detail', preset = null) {
+      state.pickerContext = context;
+      state.tagSaveFailureDemo = context === 'failure';
+      const initial = preset || (context === 'batch' ? [] : [...state.detailTagIds]);
+      state.pickerInitial = [...initial];
+      state.pickerSelected = [...initial];
+      $('#tagPickerTitle').textContent = context === 'batch' ? '为本批图片添加标签' : context.includes('create') ? '新建标签' : '编辑标签';
+      $('#tagPickerMessage').classList.toggle('hidden', !state.tagSaveFailureDemo);
+      $('#tagNameInput').value = '';
+      updateTagNameCount();
+      renderTagPicker();
+      $('#tagPickerOverlay').classList.add('is-open');
+    }
+
+    function renderTagPicker() {
+      const selectedCount = state.pickerSelected.length;
+      $('#tagSelectedCount').textContent = `已选 ${selectedCount}/5`;
+      $('#tagPickerGrid').innerHTML = tags.map(tag => {
+        const selected = state.pickerSelected.includes(tag.id);
+        const disabled = selectedCount >= 5 && !selected;
+        return `<button class="tag-choice ${selected ? 'is-selected' : ''}" data-tag-choice="${tag.id}" ${disabled ? 'disabled' : ''}>${tag.name}</button>`;
+      }).join('');
+      $('#tagLimitTip').textContent = selectedCount >= 5 ? '一张图片最多添加 5 个标签，取消任一已选项后可继续选择。' : '';
+      $('#saveTagsBtn').disabled = JSON.stringify([...state.pickerSelected].sort()) === JSON.stringify([...state.pickerInitial].sort());
+    }
+
+    function toggleTagChoice(tagId) {
+      if (state.pickerSelected.includes(tagId)) state.pickerSelected = state.pickerSelected.filter(id => id !== tagId);
+      else if (state.pickerSelected.length < 5) state.pickerSelected.push(tagId);
+      else showToast('一张图片最多添加 5 个标签');
+      renderTagPicker();
+    }
+
+    function updateTagNameCount() {
+      const input = $('#tagNameInput');
+      const length = Array.from(input.value).length;
+      $('#tagNameCount').textContent = `${length}/12`;
+      $('#tagNameError').textContent = '';
+      input.classList.remove('is-error');
+    }
+
+    function validateTagName(raw, excludeId = null) {
+      const name = raw.trim();
+      if (!name) return '请输入标签名称。';
+      if (Array.from(name).length > 12) return '标签名称最多 12 个字符。';
+      if (/[\n\r\t\p{Cc}]/u.test(name)) return '标签名称不能包含换行或控制字符。';
+      if (['全部','未分类'].includes(name)) return '该名称为系统保留名称，请更换。';
+      if (tags.some(tag => tag.id !== excludeId && tag.name.normalize('NFC').toLowerCase() === name.normalize('NFC').toLowerCase())) return '标签已存在，请直接使用已有标签。';
+      if (tags.length >= 100 && !excludeId) return '最多创建 100 个标签，请先删除不需要的标签。';
+      return '';
+    }
+
+    function createTagFromInput() {
+      const input = $('#tagNameInput');
+      const error = validateTagName(input.value);
+      if (error) {
+        $('#tagNameError').textContent = error;
+        $('#tagNameError').className = 'is-error';
+        input.classList.add('is-error');
+        return;
+      }
+      const name = input.value.trim();
+      const id = `tag-${Date.now()}`;
+      tags.unshift({ id, name, count: 0 });
+      if (state.pickerSelected.length < 5) state.pickerSelected.push(id);
+      else showToast('标签已创建；当前已选 5 个，未自动选中');
+      input.value = '';
+      updateTagNameCount();
+      renderTagPicker();
+      renderTagFilter();
+      renderTagManager();
+      showToast('标签已创建');
+      if (state.pickerContext === 'filter-create') {
+        $('#tagPickerOverlay').classList.remove('is-open');
+        applyFilter(id);
+      } else if (state.pickerContext === 'manager-create') {
+        $('#tagPickerOverlay').classList.remove('is-open');
+        showPage('tags');
+      }
+    }
+
+    function closeTagPicker() {
+      const changed = JSON.stringify([...state.pickerSelected].sort()) !== JSON.stringify([...state.pickerInitial].sort());
+      if (!changed) { $('#tagPickerOverlay').classList.remove('is-open'); return; }
+      openDialog({
+        title: '放弃本次标签修改？',
+        text: '未保存的标签选择将会丢失。',
+        confirmText: '放弃',
+        danger: true,
+        onConfirm: () => $('#tagPickerOverlay').classList.remove('is-open')
+      });
+    }
+
+    function saveTags() {
+      if (state.tagSaveFailureDemo) {
+        $('#tagPickerMessage').classList.remove('hidden');
+        state.tagSaveFailureDemo = false;
+        showToast('保存失败，选择已保留');
+        return;
+      }
+      const button = $('#saveTagsBtn');
+      button.disabled = true;
+      button.textContent = '保存中…';
+      setTimeout(() => {
+        button.textContent = '保存';
+        if (state.pickerContext === 'batch') {
+          $('#uploadTagCta').classList.add('hidden');
+          $('#uploadTagResult').classList.remove('hidden');
+          $('#uploadTagText').textContent = `已为 ${uploadTasks.filter(task => task.status === '成功').length} 张图片添加标签`;
+        } else {
+          state.detailTagIds = [...state.pickerSelected];
+          renderDetailTags();
+        }
+        $('#tagPickerOverlay').classList.remove('is-open');
+        showToast(state.pickerContext === 'batch' ? '批量标签已添加' : '标签已更新');
+      }, 600);
+    }
+
+    function openTagActions(tagId) {
+      const tag = tags.find(item => item.id === tagId);
+      if (!tag) return;
+      openActionSheet(tag.name, [
+        { label: '重命名', icon: '✎', action: () => openDialog({
+          title: '重命名标签',
+          text: '标签名称为 1～12 个字符。',
+          input: true,
+          placeholder: tag.name,
+          confirmText: '保存',
+          validate: value => !validateTagName(value, tag.id),
+          onConfirm: value => { tag.name = value.trim(); renderTagManager(); renderTagFilter(); renderDetailTags(); showToast('标签已更新'); }
+        })},
+        { label: '删除标签', icon: '⌫', action: () => openDialog({
+          title: `删除标签“${tag.name}”？`,
+          text: `该标签与 ${tag.count} 张图片的关联将被移除，但不会删除图片或备注。`,
+          confirmText: '删除标签',
+          danger: true,
+          onConfirm: () => {
+            tags = tags.filter(item => item.id !== tag.id);
+            state.detailTagIds = state.detailTagIds.filter(id => id !== tag.id);
+            if (state.activeFilter === tag.id) state.activeFilter = 'all';
+            renderTagManager(); renderTagFilter(); renderDetailTags(); showToast('标签已删除');
+          }
+        })}
+      ]);
+    }
+
     function renderUploadTasks() {
       $('#uploadGrid').innerHTML = uploadTasks.map((task, index) => {
         const isBusy = ['压缩中','上传中'].includes(task.status);
@@ -778,12 +1114,16 @@
       const busy = uploadTasks.filter(task => ['压缩中','上传中'].includes(task.status)).length;
       $('#uploadSummary').textContent = state.uploadMode === 'idle' ? '等待开始' : `成功 ${done} · 进行中 ${busy} · 失败 ${failed}`;
       $('#uploadPrimary').textContent = failed ? '重试失败项' : done === uploadTasks.length ? '完成' : '开始上传';
+      const settled = busy === 0 && done > 0 && uploadTasks.every(task => task.status === '成功' || task.status.includes('失败'));
+      $('#uploadTagCta').classList.toggle('hidden', !settled || !$('#uploadTagResult').classList.contains('hidden'));
     }
 
     function resetUpload() {
       clearInterval(state.uploadTimer);
       state.uploadMode = 'idle';
       uploadTasks.forEach(task => { task.progress = 0; task.status = '待处理'; });
+      $('#uploadTagCta').classList.add('hidden');
+      $('#uploadTagResult').classList.add('hidden');
       renderUploadTasks();
     }
 
@@ -951,17 +1291,17 @@
     function openDeletePhoto() {
       openDialog({
         title: '永久删除这张图片？',
-        text: '将同时删除关联的 3 条备注。\n删除后无法恢复。',
+        text: '将同时删除关联的 3 条备注和 2 条标签关联；标签本身保留。\n删除后无法恢复。',
         confirmText: '删除图片',
         danger: true,
-        onConfirm: () => { showPage('photos'); showToast('图片及 3 条备注已删除'); }
+        onConfirm: () => { showPage('photos'); showToast('图片、备注及标签关联已删除'); }
       });
     }
 
     function openLogoutStep1() {
       openDialog({
         title: '注销账号',
-        text: '账号、全部图片、备注和微信身份绑定将被永久删除。\n<strong>注销后无法恢复。</strong>',
+        text: '账号、全部图片、备注、标签、关联关系和微信身份绑定将被永久删除。\n<strong>注销后无法恢复。</strong>',
         confirmText: '我已了解，继续',
         danger: true,
         onConfirm: openLogoutStep2,
@@ -1028,6 +1368,7 @@
     function setPhotosState(mode) {
       showPage('photos');
       ['photosNormal','photosEmpty','photosLoading','photosError'].forEach(id => $(`#${id}`).classList.add('hidden'));
+      $('#tagResultEmpty').classList.add('hidden');
       const mapping = { normal:'photosNormal', empty:'photosEmpty', loading:'photosLoading', error:'photosError' };
       $(`#${mapping[mode] || 'photosNormal'}`).classList.remove('hidden');
       $('.fab').classList.toggle('hidden', mode !== 'normal');
@@ -1040,6 +1381,7 @@
       image.innerHTML = `<span class="photo-label">${scene === 'book' ? '读书摘录' : scene === 'desk' ? '工作台灵感' : '周末海边'}</span>`;
       $('#detailNotes').classList.remove('hidden');
       $('#detailEmpty').classList.add('hidden');
+      renderDetailTags();
       showPage('detail');
       if (highlight) {
         setTimeout(() => {
@@ -1058,6 +1400,16 @@
       if ('addPhoto' in target.dataset) openAddSheet();
       if ('openDetail' in target.dataset) openDetail(target.dataset.openDetail);
       if ('openNote' in target.dataset) openDetail('coast', true);
+      if (target.dataset.filter) applyFilter(target.dataset.filter);
+      if ('retryTags' in target.dataset) { $('#tagFilterError').classList.add('hidden'); $('#tagFilter').classList.remove('hidden'); renderTagFilter(); showToast('标签已重新加载'); }
+      if (target.dataset.managerFilter) { showPage('photos'); applyFilter(target.dataset.managerFilter); }
+      if (target.dataset.tagMore) openTagActions(target.dataset.tagMore);
+      if (target.dataset.tagChoice) toggleTagChoice(target.dataset.tagChoice);
+      if ('createTag' in target.dataset) openTagPicker(target.closest('#page-tags') ? 'manager-create' : 'filter-create', []);
+      if ('submitTag' in target.dataset) createTagFromInput();
+      if ('closeTagPicker' in target.dataset) closeTagPicker();
+      if ('saveTags' in target.dataset) saveTags();
+      if ('tagsRetry' in target.dataset) { renderTagManager(); showToast('标签已重新加载'); }
       if ('stateReset' in target.dataset) setPhotosState('normal');
       if ('startUpload' in target.dataset) startUpload();
       if ('closeUpload' in target.dataset) attemptCloseUpload();
@@ -1075,21 +1427,51 @@
         if (demo === 'upload-fail') openUpload(true);
         if (demo === 'conflict') openConflictDialog();
         if (demo === 'delete-photo') openDeletePhoto();
+        if (demo === 'tag-picker') openTagPicker('detail');
+        if (demo === 'batch-tag-picker') openTagPicker('batch');
+        if (demo === 'tag-limit') openTagPicker('detail', tags.slice(0, 5).map(tag => tag.id));
+        if (demo === 'tag-save-fail') {
+          openTagPicker('failure', ['reading']);
+          state.pickerInitial = [];
+          renderTagPicker();
+        }
+        if (demo === 'tag-picker-empty') {
+          openTagPicker('detail', []);
+          $('#tagPickerGrid').innerHTML = '<div class="tag-muted" style="grid-column:1/-1;padding:24px 0;text-align:center">还没有标签，请在下方新建</div>';
+        }
       }
       if (target.dataset.state) {
         const demoState = target.dataset.state;
         if (demoState.startsWith('photos-')) setPhotosState(demoState.replace('photos-',''));
         if (demoState === 'space-warning') { setPhotosState('normal'); $('#spaceNotice').classList.remove('hidden'); }
         if (demoState === 'notes-empty') { showPage('notes'); $('#notesNormal').classList.add('hidden'); $('#notesEmpty').classList.remove('hidden'); }
+        if (demoState === 'tag-filter-error') { showPage('photos'); $('#tagFilter').classList.add('hidden'); $('#tagFilterError').classList.remove('hidden'); }
+        if (demoState === 'tag-filter-loading') {
+          showPage('photos'); $('#tagFilterError').classList.add('hidden'); $('#tagFilter').classList.remove('hidden');
+          $('#tagFilter').innerHTML = '<button class="filter-chip is-active">全部</button><button class="filter-chip">未分类</button><i class="filter-skeleton"></i><i class="filter-skeleton"></i>';
+        }
+        if (demoState === 'tag-filter-zero') {
+          showPage('photos'); $('#tagFilterError').classList.add('hidden'); $('#tagFilter').classList.remove('hidden');
+          $('#tagFilter').innerHTML = '<button class="filter-chip is-active" data-filter="all">全部</button><button class="filter-chip" data-filter="uncategorized">未分类</button><button class="filter-action" data-create-tag>＋ 新建标签</button>';
+        }
+        if (demoState === 'tag-empty') { showPage('photos'); applyFilter('product'); }
+        if (demoState === 'tags-loading') { showPage('tags'); $('#tagsNormal').classList.add('hidden'); $('#tagsEmpty').classList.add('hidden'); $('#tagsError').classList.add('hidden'); $('#tagsLoading').classList.remove('hidden'); }
+        if (demoState === 'tags-empty') { showPage('tags'); $('#tagsNormal').classList.add('hidden'); $('#tagsLoading').classList.add('hidden'); $('#tagsError').classList.add('hidden'); $('#tagsEmpty').classList.remove('hidden'); }
+        if (demoState === 'tags-error') { showPage('tags'); $('#tagsNormal').classList.add('hidden'); $('#tagsLoading').classList.add('hidden'); $('#tagsEmpty').classList.add('hidden'); $('#tagsError').classList.remove('hidden'); }
       }
     });
 
     $('#noteInput').addEventListener('input', updateNoteCount);
+    $('#tagNameInput').addEventListener('input', updateTagNameCount);
+    $('#tagNameInput').addEventListener('keydown', event => { if (event.key === 'Enter') createTagFromInput(); });
     $('#actionSheet').addEventListener('click', event => { if (event.target === $('#actionSheet')) closeActionSheet(); });
     // High-risk Dialog and Popup overlays intentionally do not close on backdrop click.
 
     const initialHash = window.location.hash.replace('#','');
     if (pageIds.includes(initialHash)) showPage(initialHash);
+    renderTagFilter();
+    renderDetailTags();
+    renderTagManager();
     renderUploadTasks();
   </script>
 </body>
