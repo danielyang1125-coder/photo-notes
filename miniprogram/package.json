@@ -1,0 +1,12 @@
+{
+  "name": "photo-notes-miniprogram",
+  "version": "1.0.0",
+  "description": "图片笔记小程序",
+  "main": "app.js",
+  "dependencies": {
+    "tdesign-miniprogram": "~1.15.0"
+  },
+  "devDependencies": {},
+  "author": "",
+  "license": "ISC"
+}

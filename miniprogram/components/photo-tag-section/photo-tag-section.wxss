@@ -1,0 +1,5 @@
+.tag-section { }
+.section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12rpx; }
+.section-title { font-size:28rpx; font-weight:600; color:#333; }
+.no-tags { font-size:26rpx; color:#ccc; padding:16rpx 0; }
+.tag-list { display:flex; flex-wrap:wrap; gap:12rpx; }

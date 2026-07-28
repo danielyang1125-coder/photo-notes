@@ -1,0 +1,15 @@
+<!-- 统一状态组件：加载骨架 / 空态 / 错误 -->
+<view class="page-state">
+  <!-- 加载骨架 -->
+  <block wx:if="{{state === 'loading'}}">
+    <t-skeleton row-col="{{[1,1,1,{width:'60%'}]}}" loading />
+  </block>
+
+  <!-- 空态 -->
+  <t-empty wx:elif="{{state === 'empty'}}" icon="image" description="{{emptyText}}" />
+
+  <!-- 错误 -->
+  <t-result wx:elif="{{state === 'error'}}" theme="warning" title="{{errorTitle}}" description="{{errorText}}">
+    <t-button wx:if="{{showRetry}}" slot="footer" theme="primary" size="medium" bind:tap="handleRetry">重试</t-button>
+  </t-result>
+</view>

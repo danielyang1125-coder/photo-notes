@@ -1,0 +1,73 @@
+<!-- PG-004 图片预览详情 -->
+<view class="page">
+  <t-navbar title="详情" left-arrow bind:go-back="handleBack" />
+
+  <!-- 状态 -->
+  <page-state
+    wx:if="{{pageState !== 'ready'}}"
+    state="{{pageState}}"
+    emptyText="图片不存在或已删除"
+    bind:retry="handleRetry"
+  />
+
+  <!-- 内容 -->
+  <scroll-view wx:if="{{pageState === 'ready'}}" class="content" scroll-y>
+    <!-- 大图 -->
+    <view class="image-area" bind:tap="handleViewImage">
+      <image src="{{photo.compression_url}}" mode="widthFix" class="preview-image" />
+    </view>
+
+    <!-- 标签区 -->
+    <view class="section">
+      <photo-tag-section tags="{{tags}}" bind:edit="handleEditTags" />
+    </view>
+
+    <!-- 备注列表 -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">备注（{{notes.length}}）</text>
+        <t-button size="small" theme="primary" variant="text" bind:tap="handleAddNote">添加</t-button>
+      </view>
+      <view wx:if="{{notes.length === 0}}" class="empty-notes">暂无备注</view>
+      <view wx:for="{{notes}}" wx:key="_id" class="note-item">
+        <text class="note-content">{{item.content}}</text>
+        <view class="note-meta">
+          <text class="note-time">{{item.created_at}}</text>
+          <text wx:if="{{item.updated_at > item.created_at}}" class="note-edited">已编辑</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 图片信息 -->
+    <view class="section">
+      <view class="info-row"><text class="info-label">拍摄时间</text><text class="info-value">{{photo.shoot_time_str}}</text></view>
+      <view class="info-row"><text class="info-label">来源</text><text class="info-value">{{photo.time_source === 'EXIF' ? 'EXIF 拍摄' : '上传时间'}}</text></view>
+      <view class="info-row"><text class="info-label">尺寸</text><text class="info-value">{{photo.width}} × {{photo.height}}</text></view>
+      <view class="info-row"><text class="info-label">格式</text><text class="info-value">{{photo.format}}</text></view>
+    </view>
+
+    <!-- 操作 -->
+    <view class="section">
+      <t-button theme="danger" variant="outline" block bind:tap="handleDelete">删除图片及所有备注</t-button>
+    </view>
+  </scroll-view>
+
+  <!-- 操作菜单 -->
+  <t-action-sheet
+    visible="{{showActionSheet}}"
+    items="{{actionSheetItems}}"
+    bind:selected="handleActionSelected"
+    bind:cancel="handleActionCancel"
+  />
+
+  <!-- 删除确认 -->
+  <t-dialog
+    visible="{{showDeleteConfirm}}"
+    title="删除图片"
+    content="将同时删除该图片的所有备注和标签关联，不可恢复。确认删除？"
+    confirm-btn="确认删除"
+    cancel-btn="取消"
+    bind:confirm="handleConfirmDelete"
+    bind:cancel="handleCancelDelete"
+  />
+</view>

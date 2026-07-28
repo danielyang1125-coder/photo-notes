@@ -1,0 +1,10 @@
+<!-- PG-008 注销处理中 -->
+<view class="page">
+  <t-loading wx:if="{{status === 'loading'}}" theme="circular" size="48rpx" text="正在处理注销请求…" />
+  <t-result wx:elif="{{status === 'processing'}}" theme="warning" title="注销处理中" description="您的数据正在清理，请稍后查看。预计24小时内完成。">
+    <t-button slot="footer" theme="default" size="medium" bind:tap="handleRefresh">刷新状态</t-button>
+  </t-result>
+  <t-result wx:elif="{{status === 'completed'}}" theme="success" title="注销完成" description="您的数据已清理完毕。">
+    <t-button slot="footer" theme="primary" size="medium" open-type="exit">退出</t-button>
+  </t-result>
+</view>

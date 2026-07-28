@@ -1,0 +1,16 @@
+<!-- PG-006 备注列表 -->
+<view class="page">
+  <t-navbar title="备注" />
+  <view class="content">
+    <view wx:if="{{list.length === 0 && !loading}}" class="empty">
+      <text class="empty-text">还没有备注</text>
+      <text class="empty-hint">在图片详情中添加备注</text>
+    </view>
+    <view wx:else class="list">
+      <t-cell wx:for="{{list}}" wx:key="_id" title="{{item.content}}" description="{{item.created_at}}" hover>
+        <t-image slot="left-icon" src="{{item.thumbnail_url}}" mode="aspectFill" width="72" height="72" shape="round" />
+        <t-tag slot="note" wx:if="{{item.updated_at > item.created_at}}" theme="warning" size="small">已编辑</t-tag>
+      </t-cell>
+    </view>
+  </view>
+</view>

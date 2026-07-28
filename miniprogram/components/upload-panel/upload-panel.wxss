@@ -1,0 +1,38 @@
+.panel {
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32rpx 32rpx 16rpx;
+}
+.title { font-size: 32rpx; font-weight: 600; color: #1D1D1D; }
+.count { font-size: 26rpx; color: #999; }
+.task-list { flex: 1; padding: 0 32rpx; max-height: 50vh; }
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.task-thumb { width: 80rpx; height: 80rpx; border-radius: 8rpx; background: #f0f0f0; }
+.task-thumb.placeholder { border: 1rpx dashed #ddd; }
+.task-info { flex: 1; overflow: hidden; }
+.task-name { font-size: 26rpx; color: #333; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-status { font-size: 22rpx; color: #999; }
+.status-success { color: #00A870; }
+.status-failed { color: #E34D59; }
+.status-cancel { color: #999; }
+.panel-footer {
+  padding: 24rpx 32rpx;
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}

@@ -1,14 +1,32 @@
 {
   "pages": [
     "pages/index/index",
-    "pages/example/index"
+    "pages/photos/photos",
+    "pages/notes/notes",
+    "pages/preview/preview",
+    "pages/settings/settings",
+    "pages/deletion-status/deletion-status",
+    "pages/tag-manager/tag-manager"
   ],
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#0052D9",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/photos/photos",
+        "text": "图片"
+      },
+      {
+        "pagePath": "pages/notes/notes",
+        "text": "备注"
+      }
+    ]
+  },
   "window": {
-    "backgroundColor": "#F6F6F6",
-    "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#F6F6F6",
-    "navigationBarTitleText": "云开发 QuickStart",
-    "navigationBarTextStyle": "black"
+    "backgroundColor": "#F3F3F3",
+    "navigationStyle": "custom"
   },
   "sitemapLocation": "sitemap.json",
   "style": "v2",

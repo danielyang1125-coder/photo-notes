@@ -1,0 +1,54 @@
+<!-- PG-003 上传面板 -->
+<t-popup visible="{{visible}}" placement="bottom" bind:visible-change="handleVisibleChange">
+  <view class="panel">
+    <view class="panel-header">
+      <text class="title">上传图片</text>
+      <text class="count">{{uploadedCount}}/{{totalCount}} 张</text>
+    </view>
+
+    <!-- 上传列表 -->
+    <scroll-view class="task-list" scroll-y>
+      <view wx:for="{{tasks}}" wx:key="id" class="task-item">
+        <image wx:if="{{item.thumb}}" src="{{item.thumb}}" mode="aspectFill" class="task-thumb" />
+        <view wx:else class="task-thumb placeholder" />
+        <view class="task-info">
+          <text class="task-name">{{item.fileName}}</text>
+          <text class="task-status">
+            <text wx:if="{{item.status === 'pending'}}">等待上传</text>
+            <text wx:elif="{{item.status === 'compressing'}}">压缩中…</text>
+            <text wx:elif="{{item.status === 'uploading'}}">上传中 {{item.progress}}%</text>
+            <text wx:elif="{{item.status === 'confirming'}}">处理中…</text>
+            <text wx:elif="{{item.status === 'success'}}" class="status-success">✓</text>
+            <text wx:elif="{{item.status === 'failed'}}" class="status-failed">{{item.error}}</text>
+            <text wx:elif="{{item.status === 'cancelled'}}" class="status-cancel">已取消</text>
+          </text>
+        </view>
+        <t-progress wx:if="{{item.status === 'uploading'}}" percentage="{{item.progress}}" size="small" />
+      </view>
+    </scroll-view>
+
+    <!-- 操作按钮 -->
+    <view class="panel-footer">
+      <t-button wx:if="{{!allDone}}" theme="primary" size="large" block bind:tap="handleChooseImage">
+        选择图片（最多{{maxCount}}张）
+      </t-button>
+      <t-button wx:if="{{allDone && successCount > 0}}" theme="primary" size="large" block bind:tap="handleDone">
+        完成
+      </t-button>
+      <t-button wx:if="{{hasActive}}" theme="default" size="large" block bind:tap="handleCancel">
+        取消上传
+      </t-button>
+    </view>
+  </view>
+
+  <!-- 离开确认 -->
+  <t-dialog
+    visible="{{showLeaveConfirm}}"
+    title="确认离开"
+    content="还有未完成的上传任务，离开将取消正在上传的任务。已上传成功的图片不会丢失。"
+    confirm-btn="确认离开"
+    cancel-btn="继续上传"
+    bind:confirm="handleConfirmLeave"
+    bind:cancel="handleCancelLeave"
+  />
+</t-popup>

@@ -1,0 +1,1 @@
+{"name":"account","version":"1.0.0","description":"图片笔记小程序 - 注销申请与状态查询","main":"index.js","dependencies":{"wx-server-sdk":"~3.0.4"}}

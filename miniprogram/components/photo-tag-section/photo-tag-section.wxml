@@ -1,0 +1,11 @@
+<!-- 图片详情标签区 -->
+<view class="tag-section">
+  <view class="section-header">
+    <text class="section-title">标签（{{tags.length}}/5）</text>
+    <t-button size="small" theme="primary" variant="text" bind:tap="handleEdit">编辑</t-button>
+  </view>
+  <view wx:if="{{tags.length === 0}}" class="no-tags">暂无标签</view>
+  <view wx:else class="tag-list">
+    <t-tag wx:for="{{tags}}" wx:key="_id" theme="primary" variant="light" size="medium">{{item.name}}</t-tag>
+  </view>
+</view>

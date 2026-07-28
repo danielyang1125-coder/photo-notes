@@ -1,0 +1,21 @@
+<!-- PG-007 设置与隐私 -->
+<view class="page">
+  <t-navbar title="设置" left-arrow bind:go-back="handleBack" />
+  <view class="content">
+    <!-- 空间使用 -->
+    <t-cell-group title="存储空间">
+      <t-cell title="已用空间" description="{{usedMB}} MB / {{limitMB}} MB" />
+      <view class="progress-wrap"><t-progress percentage="{{usagePercent}}" label="{{usagePercent}}%" /></view>
+    </t-cell-group>
+    <!-- 标签管理入口 -->
+    <t-cell-group title="数据">
+      <t-cell title="标签管理" arrow hover bind:tap="handleTagManage" />
+    </t-cell-group>
+    <!-- 账号操作 -->
+    <t-cell-group title="账号">
+      <t-cell title="注销账号" arrow hover note="删除所有数据" bind:tap="handleDeleteAccount" />
+    </t-cell-group>
+  </view>
+  <!-- 注销确认弹窗 -->
+  <t-dialog id="delete-dialog" visible="{{showDeleteDialog}}" title="注销账号" content="注销后所有图片、备注和标签将被永久删除，不可恢复。确认继续？" confirm-btn="确认注销" cancel-btn="取消" bind:confirm="handleConfirmDeletion" bind:cancel="handleCancelDeletion" />
+</view>

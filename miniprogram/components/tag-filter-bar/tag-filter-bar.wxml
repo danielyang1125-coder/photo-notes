@@ -1,0 +1,34 @@
+<!-- 标签筛选栏：全部 | 未分类 | 快捷标签 -->
+<view class="filter-bar">
+  <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+    <view class="filter-tags">
+      <t-tag
+        theme="{{active === 'ALL' ? 'primary' : 'default'}}"
+        variant="light"
+        size="medium"
+        data-scope="ALL"
+        bind:tap="handleTap"
+      >全部</t-tag>
+      <t-tag
+        theme="{{active === 'UNCATEGORIZED' ? 'primary' : 'default'}}"
+        variant="light"
+        size="medium"
+        data-scope="UNCATEGORIZED"
+        bind:tap="handleTap"
+      >未分类</t-tag>
+      <t-tag
+        wx:for="{{quickTags}}"
+        wx:key="_id"
+        theme="{{active === 'TAG' && activeTagId === item._id ? 'primary' : 'default'}}"
+        variant="light"
+        size="medium"
+        data-scope="TAG"
+        data-tag-id="{{item._id}}"
+        bind:tap="handleTap"
+      >{{item.name}}</t-tag>
+    </view>
+  </scroll-view>
+  <view class="filter-actions">
+    <text class="action" bind:tap="handleManage">管理</text>
+  </view>
+</view>

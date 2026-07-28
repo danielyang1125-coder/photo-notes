@@ -1,0 +1,69 @@
+<!-- PG-002 图片列表 -->
+<view class="page">
+  <!-- 固定导航栏 -->
+  <view class="nav-fixed" style="height: {{navTotalHeight}}px; padding-top: {{statusBarHeight}}px;">
+    <view class="nav-inner">
+      <text class="nav-title">图片</text>
+    </view>
+  </view>
+
+  <!-- 内容区（留出导航栏高度） -->
+  <view class="content" style="padding-top: {{navTotalHeight}}px;">
+
+    <!-- 空间预警 -->
+    <t-notice-bar
+      wx:if="{{spaceWarning}}"
+      visible
+      content="存储空间即将用尽，请清理不需要的图片"
+      theme="warning"
+    />
+
+    <!-- 标签筛选栏 -->
+    <tag-filter-bar
+      active="{{filter.scope}}"
+      activeTagId="{{filter.tagId}}"
+      bind:filter="handleFilterChange"
+      bind:newtag="handleNewTag"
+      bind:manage="handleTagManage"
+    />
+
+    <!-- 状态 -->
+    <page-state
+      wx:if="{{pageState !== 'ready'}}"
+      state="{{pageState}}"
+      emptyText="还没有图片，点击右下角 + 上传"
+      bind:retry="handleRetry"
+    />
+
+    <!-- 瀑布流 -->
+    <scroll-view
+      wx:if="{{pageState === 'ready'}}"
+      class="waterfall-scroll"
+      scroll-y
+      enhanced
+      show-scrollbar="{{false}}"
+      bindscrolltolower="handleLoadMore"
+      lower-threshold="300"
+      style="height: calc(100vh - {{navTotalHeight}}px);"
+    >
+      <view class="waterfall">
+        <view class="column">
+          <photo-card wx:for="{{leftList}}" wx:key="_id" photo="{{item}}" cardHeight="{{item._cardHeight}}" />
+        </view>
+        <view class="column">
+          <photo-card wx:for="{{rightList}}" wx:key="_id" photo="{{item}}" cardHeight="{{item._cardHeight}}" />
+        </view>
+      </view>
+      <view wx:if="{{loadingMore}}" class="load-more">加载中…</view>
+      <view wx:if="{{!hasMore && list.length > 0}}" class="load-more end">— 已显示全部 —</view>
+    </scroll-view>
+  </view>
+
+  <!-- FAB 上传按钮 -->
+  <view class="fab" bind:tap="handleOpenUpload">
+    <text class="fab-icon">+</text>
+  </view>
+
+  <!-- 上传面板 -->
+  <upload-panel visible="{{showUpload}}" bind:close="handleCloseUpload" bind:done="handleUploadDone" />
+</view>

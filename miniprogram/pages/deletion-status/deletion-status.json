@@ -1,0 +1,8 @@
+{
+  "usingComponents": {
+    "t-result": "tdesign-miniprogram/result/result",
+    "t-loading": "tdesign-miniprogram/loading/loading",
+    "t-button": "tdesign-miniprogram/button/button"
+  },
+  "navigationStyle": "custom"
+}

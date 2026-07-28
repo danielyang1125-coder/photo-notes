@@ -1,0 +1,15 @@
+<!-- PG-009 标签管理 -->
+<view class="page">
+  <t-navbar title="标签管理" left-arrow bind:go-back="handleBack" />
+  <view class="content">
+    <t-empty wx:if="{{list.length === 0 && !loading}}" description="暂无标签" />
+    <view wx:else class="tag-list">
+      <t-cell wx:for="{{list}}" wx:key="_id" title="{{item.name}}" description="{{item.photo_count}} 张图片" hover>
+        <view slot="right-icon" class="actions">
+          <text class="action" data-id="{{item._id}}" data-action="rename" bind:tap="handleAction">重命名</text>
+          <text class="action danger" data-id="{{item._id}}" data-action="delete" bind:tap="handleAction">删除</text>
+        </view>
+      </t-cell>
+    </view>
+  </view>
+</view>

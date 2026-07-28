@@ -1,0 +1,22 @@
+.photo-card {
+  break-inside: avoid;
+  margin-bottom: 16rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background: #fff;
+  position: relative;
+}
+.card-image {
+  width: 100%;
+  display: block;
+}
+.card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 16rpx;
+}
+.footer-text {
+  font-size: 22rpx;
+  color: #999;
+}

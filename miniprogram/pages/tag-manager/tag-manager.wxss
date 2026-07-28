@@ -1,0 +1,6 @@
+.page { min-height:100vh; background:#f3f3f3; }
+.content { padding:0; }
+.tag-list { background:#fff; }
+.actions { display:flex; gap:24rpx; }
+.action { font-size:26rpx; color:#0052D9; }
+.action.danger { color:#E34D59; }

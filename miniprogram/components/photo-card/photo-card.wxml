@@ -1,0 +1,14 @@
+<!-- 瀑布流图片卡片 -->
+<view class="photo-card" bind:tap="handleTap" style="height: {{cardHeight}}rpx">
+  <t-image
+    src="{{photo.thumbnail_url}}"
+    mode="widthFix"
+    width="100%"
+    lazy-load
+    class="card-image"
+  />
+  <view class="card-footer" wx:if="{{photo.note_count > 0}}">
+    <t-badge count="{{photo.note_count}}" shape="circle" size="small" />
+    <text class="footer-text">条备注</text>
+  </view>
+</view>

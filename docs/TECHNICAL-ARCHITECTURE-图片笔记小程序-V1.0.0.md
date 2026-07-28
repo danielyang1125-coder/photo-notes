@@ -220,11 +220,11 @@ PG-002 的【＋新建标签】直接复用 `<tag-name-editor>`，创建成功�
 
 | 页面/组件 | TDesign 组件 | 用途 |
 |---|---|---|
-| PG-002 图片列表 | `t-navbar`, `t-image`, `t-badge`, `t-notice-bar`, `t-skeleton`, `t-tab-bar`, `t-scroll-view`, `t-tag`, `t-button` | 导航、图片流、空间预警、标签单行横向筛选、底部 Tab |
+| PG-002 图片列表 | `t-navbar`, `t-image`, `t-badge`, `t-notice-bar`, `t-skeleton`, `t-tag`, `t-button` | 导航、图片流、空间预警、标签单行横向筛选 |
 | PG-003 上传面板 | `t-popup`, `t-progress`, `t-dialog` | 底部弹出、进度条、离开确认 |
 | PG-004 图片预览 | `t-navbar`, `t-image-viewer`, `t-action-sheet`, `t-empty`, `t-tag` | 导航、大图查看、操作菜单、完整标签展示、空态 |
 | PG-005 备注编辑 | `t-popup`, `t-textarea`, `t-button`, `t-message` | 编辑层、文本输入、保存按钮、冲突提示 |
-| PG-006 备注列表 | `t-navbar`, `t-cell`, `t-image`, `t-tag`, `t-action-sheet`, `t-tab-bar` | 导航、列表项、缩略图、排序标签、排序选择、底部Tab |
+| PG-006 备注列表 | `t-navbar`, `t-cell`, `t-image`, `t-tag`, `t-action-sheet` | 导航、列表项、缩略图、排序标签、排序选择 |
 | PG-007 设置 | `t-cell-group`, `t-cell`, `t-progress`, `t-dialog`, `t-input` | 设置项、空间进度条、注销确认、文字输入 |
 | PG-008 注销状态 | `t-result`, `t-loading`, `t-button` | 结果展示、加载态、联系客服 |
 | PG-009 标签管理 | `t-navbar`, `t-cell`, `t-action-sheet`, `t-skeleton`, `t-empty` | 标签列表、筛选返回、重命名、删除 |
@@ -445,9 +445,9 @@ exports.main = async (event, context) => {
   _id: ObjectId,
   _openid: "oA_...",
   photo_id: ObjectId,
+  photo_file_id: "cloud://env-id.xxx", // 稳定云文件标识，用于生成临时缩略图 URL
   content: "string",               // 1~1000 Unicode code point
   content_code_point_count: 150,   // 服务端计数值
-  photo_thumbnail_url: "string",   // 冗余：加速列表展示
   photo_shoot_time: Date,          // 冗余：支持拍摄时间排序
   created_at: Date,
   updated_at: Date                 // 乐观并发锁版本号
@@ -458,7 +458,9 @@ exports.main = async (event, context) => {
 // { _openid: 1, photo_shoot_time: -1 } — 按拍摄时间排序
 ```
 
-**设计要点**：`photo_thumbnail_url` 和 `photo_shoot_time` 为冗余字段，创建备注时从 photo 拷贝。避免备注列表按拍摄时间排序时需要 `$lookup` 聚合查询。
+**设计要点**：
+- `photo_file_id` 和 `photo_shoot_time` 为冗余字段，创建备注时从 photo 拷贝。避免备注列表按拍摄时间排序时需要 `$lookup` 聚合查询。
+- **不存储临时 URL**：`cloud.getTempFileURL()` 返回的 URL 有时效性（约 2 小时），不可存入数据库。备注列表接口返回前批量调用 `getTempFileURL()`（每批最多 50 个）将 `photo_file_id` 转换为临时的 `thumbnail_url` 和 `imageMogr2` 参数拼接。
 
 #### `tags` 集合
 
@@ -505,13 +507,18 @@ exports.main = async (event, context) => {
 {
   _id: ObjectId,
   _openid: "oA_...",
-  status: "PENDING",               // PENDING | PROCESSING | RETRYING | COMPLETED
-  failed_stage: "string",
+  type: "ACCOUNT_DELETION",        // ACCOUNT_DELETION | PHOTO_DELETE
+  photo_id: ObjectId,              // PHOTO_DELETE 类型必填
+  status: "PENDING",               // PENDING → DELETING → COMPLETED（或 FAILED → RETRYING）
+  failed_stage: "string",          // STORAGE_DELETE | DB_CLEANUP — 失败时记录
+  last_error: "string",            // 最后一次错误消息
   retry_count: 0,
   applied_at: Date,
   completed_at: Date
 }
-// 索引：{ _openid: 1, status: 1 }
+// 索引：
+// { _openid: 1, status: 1 }               — 查询用户待处理删除任务
+// { status: 1, retry_count: 1 }           — cleanup 扫描失败任务
 ```
 
 #### 事务与一致性边界
@@ -521,7 +528,13 @@ exports.main = async (event, context) => {
 - 创建/重命名标签：校验、唯一性写入和返回摘要处于同一事务；捕获唯一键冲突并映射为 `TAG_NAME_DUPLICATED`。
 - 单图关联：锁定本人图片及涉及标签，计算集合差异；只有实际新增/移除的关系才更新双方计数。事务冲突由 SDK 重试，唯一键冲突按已存在关系处理。
 - 标签删除：在服务端事务中删除本人标签及全部关系，并按受影响图片实际移除数递减 `photos.tag_count`；重复删除返回成功。
-- 图片删除：云存储对象删除成功后，在数据库事务中删除图片、备注、全部关系，按实际关系递减相关 `tags.photo_count`，并原子扣减空间用量。
+- 图片删除：采用**状态机 + cleanup 补偿**模式。云存储（COS）与云数据库不能形成同一 ACID 事务，因此分阶段执行：
+  1. **PENDING → DELETING**：创建 `deletion_tasks` 记录（`type: "PHOTO_DELETE"`），标记用户和图片信息。
+  2. **阶段 STORAGE_DELETE**：删除云存储对象（COS `DELETE` 幂等，对象不存在不报错）。
+  3. **阶段 DB_CLEANUP**：在数据库事务中删除备注 → 删除 `photo_tags` 关系 → 递减相关 `tags.photo_count` → 删除 `photos` 记录 → 原子扣减 `users.used_bytes`。
+  4. **DELETING → COMPLETED**：两阶段均成功后标记完成。
+  5. **任意阶段失败 → FAILED**：记录 `failed_stage` 和 `last_error`，次日由 `cleanup` 定时任务扫描 `FAILED`/`RETRYING` 任务重试。
+  6. **cleanup 补偿**：每日扫描孤立云存储对象（有文件无 photo 记录）补偿删除；聚合校正 `tags.photo_count` 和 `photos.tag_count`。
 - 批量添加：最多 20 张图片 × 5 个标签，以“每张图片一个事务”执行集合合并；某张图片失效或合并后超限不回滚其他图片。
 - 请求重放依靠“唯一关系 + 读取实际差异后更新计数”保证状态幂等；`requestId` 用于链路追踪和识别重复调用，不记录标签名称。
 - 每日 `cleanup` 重新聚合有效关系，修正 `tags.photo_count` 与 `photos.tag_count`；修正前后值仅写安全审计日志。
@@ -556,7 +569,12 @@ cloud://env-id/
   }]
 }
 ```
-清理内容：孤立云存储对象 + DELETING 用户重试推进 + 标签/图片派生计数核对与校正。
+清理内容（按执行顺序）：
+1. 扫描 `deletion_tasks` 中 `status: FAILED|RETRYING` 的任务，按 `failed_stage` 从断点重试。
+2. 扫描孤立云存储对象：遍历 `photos/` 目录，对比 `photos` 集合，删除无对应记录的文件。
+3. 扫描失效数据库引用：`photo_tags` 中有记录但 `photos` 中已删除的，清理关系并更新标签计数。
+4. 推进 `ACCOUNT_DELETION` 任务：重试注销各阶段，全部成功后解绑微信。
+5. 聚合校正：按有效 `photo_tags` 重新计算 `tags.photo_count` 和 `photos.tag_count`，仅修正不一致项并记录审计日志。
 
 ---
 
@@ -617,6 +635,52 @@ if (result.stats.updated === 0) {
 5. 对裁剪结果执行 NFC，再对 Unicode Latin Script 字符做大小写归一，生成 `normalized_name`。
 6. 以用户 ID + `normalized_name` 唯一索引完成最终并发校验，展示仍使用裁剪后的 `name`。
 
+### 5.6 上传内容安全审核
+
+采用微信云调用 `security.imgSecCheck` + `security.msgSecCheck` 对用户上传内容进行合规检测。
+
+**审核策略**：先审后存——审核通过才写入数据库和云存储。
+
+**覆盖范围**：
+
+| 内容类型 | 检测接口 | 调用位置 |
+|---|---|---|
+| 图片 | `cloud.openapi.security.imgSecCheck` | upload 云函数 confirm 前 |
+| 备注文本 | `cloud.openapi.security.msgSecCheck` | note 云函数 add/update 前 |
+| 标签名称 | `cloud.openapi.security.msgSecCheck` | tag 云函数 create/rename 前 |
+
+**调用流程（以图片上传为例）**：
+
+```
+客户端上传图片到云存储 → 获取 fileID
+  → callFunction('upload', { type:'confirm', fileId, ... })
+    → cloud.downloadFile({ fileID })  // 获取图片 buffer
+    → cloud.openapi.security.imgSecCheck({ media: { contentType, value: buffer } })
+      ├─ 通过 (errCode: 0) → 继续创建 photo 记录
+      └─ 不通过 (errCode: 87014) → 删除已上传文件，返回 { code: 'CONTENT_REVIEW_FAILED' }
+```
+
+**异常处理**：
+
+| 场景 | 处理方式 |
+|---|---|
+| 审核通过 | 正常写入数据库 |
+| 审核不通过 | 图片：删除已上传云存储对象，返回 `CONTENT_REVIEW_FAILED`，前端提示"内容不合规，无法上传" |
+| 审核服务超时/不可用 | **阻断操作**，返回 `CONTENT_REVIEW_UNAVAILABLE`，前端提示"服务暂时不可用，请稍后重试" |
+
+**设计约束**：
+- 审核不通过的文件必须从云存储删除，避免产生孤立对象。
+- 云调用 `imgSecCheck` 对图片大小有 1MB 限制：压缩后的图片（≤3MB）可能超出，需在调用前二次压缩为审核专用 buffer（最长边 ≤750px，size ≤1MB），原始压缩文件仍用于存储。
+- 审核日志仅记录 `requestId` 和通过/拒绝结果，不记录图片内容、备注文本或标签名称。
+- V1.0 不设人工复核入口；用户在设置页可通过客服联系方式反馈误判。
+
+**新增错误码**：
+
+| 错误码 | 说明 | 前端处理 |
+|---|---|---|
+| `CONTENT_REVIEW_FAILED` | 内容不合规 | 提示用户，不保留上传任务 |
+| `CONTENT_REVIEW_UNAVAILABLE` | 审核服务不可用 | 提示稍后重试，保留上传任务 |
+
 ---
 
 ## 6. 接口设计
@@ -647,6 +711,8 @@ if (result.stats.updated === 0) {
 | `PHOTO_TAG_LIMIT_REACHED` | 单图集合合并后超过 5 个 | 保留选择并提示上限 |
 | `PHOTO_NOT_FOUND` | 图片不存在或已删除 | 关闭关联层并刷新/返回图片列表 |
 | `DELETION_ALREADY_PENDING` | 已有未完成注销任务 | 进入注销状态页 |
+| `CONTENT_REVIEW_FAILED` | 图片/文本内容不合规 | 提示用户内容不合规，不保留上传任务 |
+| `CONTENT_REVIEW_UNAVAILABLE` | 审核服务不可用 | 提示稍后重试，保留上传任务 |
 | `INTERNAL_ERROR` | 服务内部错误 | 不提前改变权威结果，保留输入并允许重试 |
 
 ### 6.3 核心接口
@@ -667,7 +733,8 @@ list:    IN { type:"list", scope:"ALL"|"UNCATEGORIZED"|"TAG", tagId?, page, page
 detail:  IN { type:"detail", photoId }
          → OUT { photo:{...compression_url...}, notes:[...], tags:[TagSummary] }
 delete:  IN { type:"delete", photoId }
-         → OUT { deletedNotesCount, removedTagRelationCount }
+         → OUT { taskId, status: "PENDING" }
+         说明：创建 PHOTO_DELETE 任务后立即返回；实际删除异步执行，结果通过 photo/list 和用户空间反映
 ```
 
 约束：
@@ -682,7 +749,10 @@ add:     IN { type:"add", photoId, content }  →  OUT { note:{ _id,... } }
 update:  IN { type:"update", noteId, content, updatedAt }  →  OUT { note } | CONFLICT
 delete:  IN { type:"delete", noteId }  →  OUT { photoId, newNoteCount }
 list:    IN { type:"list", page, pageSize, sortBy:"created_at"|"photo_shoot_time",
-              sortOrder:"desc"|"asc" }  →  OUT { list, total, hasMore }
+              sortOrder:"desc"|"asc" }
+         →  OUT { list:[{_id,photo_id,thumbnail_url(临时),content,content_code_point_count,
+                        photo_shoot_time,created_at,updated_at}], total, hasMore }
+         实现：查询 notes → 收集 photo_file_id → 批量 getTempFileURL() 生成 thumbnail_url
 ```
 
 #### upload 云函数
@@ -776,6 +846,13 @@ getDeletionStatus:  IN { type:"getDeletionStatus" }  →  OUT { status, retryCou
       校验 _openid
       检查空间 used_bytes + size ≤ limit_bytes
       幂等检查 taskId
+      ↓
+      内容安全审核（§5.6）:
+        cloud.downloadFile({ fileID }) → 二次压缩至 ≤1MB
+        cloud.openapi.security.imgSecCheck()
+        ├─ 通过 → 继续
+        └─ 不通过 → 删除云存储文件，返回 CONTENT_REVIEW_FAILED
+      ↓
       photos.insert({...tag_count:0})
       users.update({ $inc: { used_bytes: size } })
       ← 返回含 photoId 的 photo 记录

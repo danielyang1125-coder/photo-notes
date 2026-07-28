@@ -1,0 +1,1 @@
+{"name":"cleanup","version":"1.0.0","description":"图片笔记小程序 - 定时清理与计数校正","main":"index.js","dependencies":{"wx-server-sdk":"~3.0.4"}}

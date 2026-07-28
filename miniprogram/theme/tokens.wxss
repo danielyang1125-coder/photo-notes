@@ -1,0 +1,42 @@
+/* ============================================================
+   图片笔记小程序 — CSS 自定义属性（Design Tokens）
+   基于 DESIGN-SYSTEM-图片笔记小程序-V1.0.0.md
+   ============================================================ */
+
+page {
+  /* ---- 品牌色 ---- */
+  --color-primary: #0052D9;
+  --color-primary-light: #E0EBFF;
+  --color-primary-dark: #003CAB;
+
+  /* ---- 功能色 ---- */
+  --color-success: #00A870;
+  --color-warning: #ED7B2F;
+  --color-error: #E34D59;
+  --color-info: #0052D9;
+
+  /* ---- 中性色 ---- */
+  --color-bg: #F3F3F3;
+  --color-bg-white: #FFFFFF;
+  --color-text-primary: #1D1D1D;
+  --color-text-secondary: #717171;
+  --color-text-placeholder: #BBBBBB;
+  --color-border: #E7E7E7;
+
+  /* ---- 标签专用 Token ---- */
+  --color-tag-bg: #F3F3F3;
+  --color-tag-selected-bg: #E0EBFF;
+  --color-disabled-bg: #EEEEEE;
+
+  /* ---- 尺寸 ---- */
+  --radius-sm: 6rpx;
+  --radius-md: 12rpx;
+  --radius-lg: 16rpx;
+
+  /* ---- 字体 ---- */
+  --font-size-xs: 22rpx;
+  --font-size-sm: 24rpx;
+  --font-size-md: 28rpx;
+  --font-size-lg: 32rpx;
+  --font-size-xl: 36rpx;
+}

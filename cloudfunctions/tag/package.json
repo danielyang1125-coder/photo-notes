@@ -1,0 +1,1 @@
+{"name":"tag","version":"1.0.0","description":"图片笔记小程序 - 标签CRUD与关联","main":"index.js","dependencies":{"wx-server-sdk":"~3.0.4"}}
