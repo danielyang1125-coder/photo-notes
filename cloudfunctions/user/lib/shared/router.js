@@ -21,10 +21,16 @@ function createBusinessMain(options) {
     try {
       if (!knownTypes.has(type)) throw new AppError('UNKNOWN_TYPE')
       const openid = getOpenId(cloud)
+      let activeUser
       if (activeGuard && !exemptTypes.has(type)) {
-        await requireActiveUser(db, openid)
+        activeUser = await requireActiveUser(db, openid)
       }
-      const value = await handlers[type]({ event, context, openid })
+      const value = await handlers[type]({
+        activeUser,
+        event,
+        context,
+        openid,
+      })
       const response = normalizeResponse(value)
       logger.info({
         event: `${options.domain}.${type}`,

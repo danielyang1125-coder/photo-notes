@@ -84,3 +84,49 @@ if (infrastructureErrors.length) {
 process.stdout.write(
   'DEV-01 audit manifest passed (INF-01..INF-12, UPL-17, CLN-01 static scope).\n',
 )
+
+const dev02Errors = []
+for (const relative of [
+  path.join('cloudfunctions', 'user', 'handlers.js'),
+  path.join('test', 'backend', 'user.test.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev02Errors.push(`artifact: ${relative}`)
+  }
+}
+
+const userEntry = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'user', 'index.js'),
+  'utf8',
+)
+if (!userEntry.includes(
+  "activeGuardExempt: ['login', 'getStatus', 'healthCheck']",
+)) {
+  dev02Errors.push('user ACTIVE guard exemptions')
+}
+const accountEntry = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'account', 'index.js'),
+  'utf8',
+)
+if (!accountEntry.includes("activeGuardExempt: ['getDeletionStatus']")) {
+  dev02Errors.push('account ACTIVE guard exemptions')
+}
+for (const domain of ['upload', 'photo', 'note', 'tag']) {
+  const entry = fs.readFileSync(
+    path.join(root, 'cloudfunctions', domain, 'index.js'),
+    'utf8',
+  )
+  if (!entry.includes('createBusinessMain({') ||
+      entry.includes('activeGuard: false')) {
+    dev02Errors.push(`${domain} ACTIVE guard`)
+  }
+}
+if (dev02Errors.length) {
+  process.stderr.write(
+    `DEV-02 audit failed:\n${dev02Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-02 audit manifest passed (USR-01..USR-06, COM-04..COM-07 static scope).\n',
+)

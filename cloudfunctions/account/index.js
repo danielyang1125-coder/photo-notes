@@ -70,7 +70,7 @@ exports.main = createBusinessMain({
   cloud,
   db,
   logger,
-  activeGuard: false,
+  activeGuardExempt: ['getDeletionStatus'],
   handlers: {
     requestDeletion: ({ openid, event }) => handleRequestDeletion(openid, event),
     getDeletionStatus: ({ openid }) => handleGetDeletionStatus(openid),
