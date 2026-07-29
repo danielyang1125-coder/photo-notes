@@ -2,6 +2,9 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
+const { createBusinessMain } = require('./lib/shared/router')
+const { createSecurityLogger } = require('./lib/shared/security-log')
+const logger = createSecurityLogger()
 
 // ============================================================
 // 用户登录/身份建立
@@ -116,38 +119,24 @@ async function handleGetSpaceUsage(openid) {
 // 环境健康检查
 // ============================================================
 async function handleHealthCheck(openid) {
-  const checks = {}
+  if (process.env.ENABLE_HEALTH_CHECK !== 'true') {
+    return { code: 'FORBIDDEN', message: '当前操作不可用' }
+  }
+
+  const checks = {
+    database: false,
+    transaction: false,
+    storage: false,
+  }
   const startTime = Date.now()
 
-  // 1. 数据库连接
   try {
     await db.collection('users').count()
-    checks.dbConnect = { ok: true, ms: Date.now() - startTime }
-  } catch (e) {
-    checks.dbConnect = { ok: false, error: e.message }
+    checks.database = true
+  } catch (_) {
     return { code: 'SUCCESS', data: { checks, verdict: 'FAILED' } }
   }
 
-  // 2. 集合可访问性
-  const collections = [
-    'users',
-    'photos',
-    'notes',
-    'tags',
-    'photo_tags',
-    'deletion_tasks',
-  ]
-  checks.collections = {}
-  for (const name of collections) {
-    try {
-      const r = await db.collection(name).count()
-      checks.collections[name] = { ok: true, count: r.total }
-    } catch (e) {
-      checks.collections[name] = { ok: false, error: e.message }
-    }
-  }
-
-  // 3. 事务能力：写入测试文档 + 回滚，验证完整事务链路且不留数据
   try {
     const transaction = await db.startTransaction()
     await transaction.collection('users').add({
@@ -161,48 +150,29 @@ async function handleHealthCheck(openid) {
       },
     })
     await transaction.rollback()
-    checks.transaction = { ok: true, note: '事务启动 + add + rollback 成功' }
-  } catch (e) {
-    checks.transaction = { ok: false, error: e.message }
+    checks.transaction = true
+  } catch (_) {
+    checks.transaction = false
   }
 
-  // 4. 云存储
   try {
     const envId = cloud.DYNAMIC_CURRENT_ENV.toString()
     await cloud.getTempFileURL({
       fileList: [`cloud://${envId}.dummy`],
     })
-    checks.storage = { ok: true, note: 'API 可达' }
+    checks.storage = true
   } catch (e) {
-    // 文件不存在 = getTempFileURL API 已调通
-    if (
-      (e.message && e.message.includes('NOT_FOUND')) ||
-      e.errCode === -501001
-    ) {
-      checks.storage = { ok: true, note: 'API 可达（预期：文件不存在）' }
-    } else {
-      checks.storage = { ok: false, error: e.message || String(e) }
-    }
+    checks.storage = e.errCode === -501001
   }
 
-  // 5. 综合判定（扁平化所有检查项）
-  const leafChecks = [
-    checks.dbConnect,
-    ...Object.values(checks.collections),
-    checks.transaction,
-    checks.storage,
-  ]
-  const allOk = leafChecks.every((c) => c && c.ok === true)
-  const collectionsOk = Object.values(checks.collections).every((c) => c.ok === true)
+  const allOk = Object.values(checks).every(Boolean)
 
   return {
     code: 'SUCCESS',
     data: {
       checks,
-      verdict: allOk ? 'ALL_OK' : collectionsOk ? 'COLLECTIONS_OK' : 'NEED_SETUP',
-      env: cloud.DYNAMIC_CURRENT_ENV,
-      openid: openid.substring(0, 8) + '...',
-      ms: Date.now() - startTime,
+      verdict: allOk ? 'ALL_OK' : 'FAILED',
+      durationMs: Date.now() - startTime,
     },
   }
 }
@@ -210,28 +180,16 @@ async function handleHealthCheck(openid) {
 // ============================================================
 // 入口
 // ============================================================
-exports.main = async (event, context) => {
-  const { OPENID } = cloud.getWXContext()
-  if (!OPENID) return { code: 'AUTH_FAILED', message: '身份验证失败' }
-
-  try {
-    switch (event.type) {
-      case 'login':
-        return handleLogin(OPENID)
-      case 'getStatus':
-        return handleGetStatus(OPENID)
-      case 'getSpaceUsage':
-        return handleGetSpaceUsage(OPENID)
-      case 'healthCheck':
-        return handleHealthCheck(OPENID)
-      default:
-        return { code: 'UNKNOWN_TYPE', message: '未知操作类型，支持: login | getStatus | getSpaceUsage | healthCheck' }
-    }
-  } catch (err) {
-    console.error('[user]', err)
-    return {
-      code: err.code || 'INTERNAL_ERROR',
-      message: err.message || '服务异常',
-    }
-  }
-}
+exports.main = createBusinessMain({
+  domain: 'user',
+  cloud,
+  db,
+  logger,
+  activeGuard: false,
+  handlers: {
+    login: ({ openid }) => handleLogin(openid),
+    getStatus: ({ openid }) => handleGetStatus(openid),
+    getSpaceUsage: ({ openid }) => handleGetSpaceUsage(openid),
+    healthCheck: ({ openid }) => handleHealthCheck(openid),
+  },
+})

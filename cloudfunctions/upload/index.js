@@ -2,23 +2,9 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
-
-function getOpenId() {
-  return cloud.getWXContext().OPENID
-}
-
-async function checkUserActive(openid) {
-  try {
-    const user = await db.collection('users').doc(openid).get()
-    if (!user.data || user.data.status !== 'ACTIVE') {
-      throw { code: 'USER_NOT_ACTIVE', message: '账号状态异常' }
-    }
-    return user.data
-  } catch (e) {
-    if (e.code) throw e
-    throw { code: 'USER_NOT_ACTIVE', message: '用户不存在' }
-  }
-}
+const { createBusinessMain } = require('./lib/shared/router')
+const { createSecurityLogger } = require('./lib/shared/security-log')
+const logger = createSecurityLogger()
 
 // ============================================================
 // confirm — 上传确认（幂等 + 内容审核 + 创建记录）
@@ -80,7 +66,11 @@ async function handleConfirm(openid, event) {
       return { code: 'CONTENT_REVIEW_FAILED', message: '内容不合规，无法上传' }
     }
     // API 未开通/未配置权限/超时 → 记日志放行（生产环境需开通）
-    console.warn('[upload] imgSecCheck 未可用，放行:', e.errCode || e.message)
+    logger.error({
+      event: 'upload.content_review',
+      result: 'FAILURE',
+      safeErrorCode: 'CONTENT_REVIEW_UNAVAILABLE',
+    })
   }
 
   // 创建 photo 记录
@@ -129,22 +119,12 @@ async function handleConfirm(openid, event) {
 }
 
 // ============================================================
-exports.main = async (event, context) => {
-  const openid = getOpenId()
-  if (!openid) return { code: 'AUTH_FAILED', message: '身份验证失败' }
-  try {
-    await checkUserActive(openid)
-    switch (event.type) {
-      case 'confirm':
-        return handleConfirm(openid, event)
-      default:
-        return { code: 'UNKNOWN_TYPE', message: '支持: confirm' }
-    }
-  } catch (err) {
-    if (err.code && err.code !== 'INTERNAL_ERROR') {
-      return { code: err.code, message: err.message }
-    }
-    console.error('[upload]', err)
-    return { code: err.code || 'INTERNAL_ERROR', message: err.message || '服务异常' }
-  }
-}
+exports.main = createBusinessMain({
+  domain: 'upload',
+  cloud,
+  db,
+  logger,
+  handlers: {
+    confirm: ({ openid, event }) => handleConfirm(openid, event),
+  },
+})

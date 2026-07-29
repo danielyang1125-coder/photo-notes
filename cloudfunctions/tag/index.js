@@ -2,22 +2,16 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
+const { createBusinessMain } = require('./lib/shared/router')
+const { createSecurityLogger } = require('./lib/shared/security-log')
+const { isUniqueConflict } = require('./lib/shared/transaction')
+const logger = createSecurityLogger()
 
 const TAG_NAME_MAX = 12
 const TAG_MAX_COUNT = 100
 const PHOTO_TAG_MAX = 5
 const QUICK_LIMIT = 5
 const RESERVED = ['全部', '未分类']
-
-function getOpenId() { return cloud.getWXContext().OPENID }
-
-async function checkUserActive(openid) {
-  const user = await db.collection('users').doc(openid).get()
-  if (!user.data || user.data.status !== 'ACTIVE') {
-    throw { code: 'USER_NOT_ACTIVE', message: '账号状态异常' }
-  }
-  return user.data
-}
 
 // ============================================================
 // 标签名称规范化
@@ -150,7 +144,12 @@ async function handleCreate(openid, event) {
       })
     } catch (e) {
       if (e.errCode === 87014) return { code: 'CONTENT_REVIEW_FAILED', message: '内容不合规' }
-      console.error('[tag] msgSecCheck:', e.errCode, e.message)
+      logger.error({
+        event: 'tag.content_review',
+        result: 'FAILURE',
+        safeErrorCode: 'CONTENT_REVIEW_UNAVAILABLE',
+      })
+      return { code: 'CONTENT_REVIEW_UNAVAILABLE', message: '内容审核服务暂时不可用' }
     }
     const tag = {
       _openid: openid, name, normalized_name: normalizedName,
@@ -165,7 +164,7 @@ async function handleCreate(openid, event) {
   } catch (e) {
     if (e.code) throw e
     // 唯一索引冲突 → 重名
-    if (e.errCode === -502003 || (e.message && e.message.includes('duplicate'))) {
+    if (isUniqueConflict(e)) {
       return { code: 'TAG_NAME_DUPLICATED', message: '标签名称已存在' }
     }
     throw e
@@ -198,7 +197,7 @@ async function handleRename(openid, event) {
     return { code: 'SUCCESS', data: { tag: updated.data } }
   } catch (e) {
     if (e.code) throw e
-    if (e.errCode === -502003 || (e.message && e.message.includes('duplicate'))) {
+    if (isUniqueConflict(e)) {
       return { code: 'TAG_NAME_DUPLICATED', message: '标签名称已存在' }
     }
     throw e
@@ -331,24 +330,18 @@ async function handleUpdatePhotoTags(openid, event) {
 }
 
 // ============================================================
-exports.main = async (event, context) => {
-  const openid = getOpenId()
-  if (!openid) return { code: 'AUTH_FAILED', message: '身份验证失败' }
-  try {
-    await checkUserActive(openid)
-    switch (event.type) {
-      case 'list':            return handleList(openid, event)
-      case 'create':          return handleCreate(openid, event)
-      case 'rename':          return handleRename(openid, event)
-      case 'delete':          return handleDelete(openid, event)
-      case 'getPhotoTags':    return handleGetPhotoTags(openid, event)
-      case 'updatePhotoTags': return handleUpdatePhotoTags(openid, event)
-      case 'batchAddPhotoTags': return handleBatchAddPhotoTags(openid, event)
-      default: return { code: 'UNKNOWN_TYPE', message: '支持: list | create | rename | delete | getPhotoTags | updatePhotoTags | batchAddPhotoTags' }
-    }
-  } catch (err) {
-    if (err.code && err.code !== 'INTERNAL_ERROR') return { code: err.code, message: err.message }
-    console.error('[tag]', err)
-    return { code: err.code || 'INTERNAL_ERROR', message: err.message || '服务异常' }
-  }
-}
+exports.main = createBusinessMain({
+  domain: 'tag',
+  cloud,
+  db,
+  logger,
+  handlers: {
+    list: ({ openid, event }) => handleList(openid, event),
+    create: ({ openid, event }) => handleCreate(openid, event),
+    rename: ({ openid, event }) => handleRename(openid, event),
+    delete: ({ openid, event }) => handleDelete(openid, event),
+    getPhotoTags: ({ openid, event }) => handleGetPhotoTags(openid, event),
+    updatePhotoTags: ({ openid, event }) => handleUpdatePhotoTags(openid, event),
+    batchAddPhotoTags: ({ openid, event }) => handleBatchAddPhotoTags(openid, event),
+  },
+})

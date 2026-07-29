@@ -2,23 +2,9 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
-
-function getOpenId() {
-  return cloud.getWXContext().OPENID
-}
-
-async function checkUserActive(openid) {
-  try {
-    const user = await db.collection('users').doc(openid).get()
-    if (!user.data || user.data.status !== 'ACTIVE') {
-      throw { code: 'USER_NOT_ACTIVE', message: '账号状态异常' }
-    }
-    return user.data
-  } catch (e) {
-    if (e.code) throw e
-    throw { code: 'USER_NOT_ACTIVE', message: '用户不存在' }
-  }
-}
+const { createBusinessMain } = require('./lib/shared/router')
+const { createSecurityLogger } = require('./lib/shared/security-log')
+const logger = createSecurityLogger()
 
 // ============================================================
 // list — ALL | UNCATEGORIZED | TAG
@@ -98,8 +84,12 @@ async function handleList(openid, event) {
     })
     if (invalidRelations.length > 0) {
       await Promise.all(invalidRelations.map(item =>
-        db.collection('photo_tags').doc(item._id).remove().catch(error => {
-          console.warn('[photo] 清理失效标签关系失败:', item._id, error.message)
+        db.collection('photo_tags').doc(item._id).remove().catch(() => {
+          logger.error({
+            event: 'photo.orphan_relation_cleanup',
+            result: 'FAILURE',
+            safeErrorCode: 'INTERNAL_ERROR',
+          })
         })
       ))
     }
@@ -134,8 +124,12 @@ async function handleList(openid, event) {
           }
         })
         photos.forEach(p => { p.thumbnail_url = urlMap[p.file_id] || '' })
-      } catch (e) {
-        console.error('[photo] getTempFileURL 失败:', e.message)
+      } catch (_) {
+        logger.error({
+          event: 'photo.thumbnail_url',
+          result: 'FAILURE',
+          safeErrorCode: 'INTERNAL_ERROR',
+        })
         photos.forEach(p => { p.thumbnail_url = '' })
       }
     }
@@ -174,8 +168,12 @@ async function handleDetail(openid, event) {
       if (r.fileList[0] && r.fileList[0].tempFileURL) {
         compressionUrl = r.fileList[0].tempFileURL
       }
-    } catch (e) {
-      console.error('[photo] detail URL:', e.message)
+    } catch (_) {
+      logger.error({
+        event: 'photo.detail_url',
+        result: 'FAILURE',
+        safeErrorCode: 'INTERNAL_ERROR',
+      })
     }
   }
 
@@ -232,10 +230,10 @@ async function handleDelete(openid, event) {
   // 阶段 1：删除云存储（COS DELETE 幂等）
   try {
     if (fileId) await cloud.deleteFile({ fileList: [fileId] })
-  } catch (e) {
+  } catch (_) {
     task.status = 'FAILED'
     task.failed_stage = 'STORAGE_DELETE'
-    task.last_error = e.message || '云存储删除失败'
+    task.last_error = 'STORAGE_DELETE_FAILED'
     const r = await db.collection('deletion_tasks').add({ data: task })
     return { code: 'SUCCESS', data: { taskId: r._id, status: 'FAILED', message: '云存储删除失败，稍后重试' } }
   }
@@ -264,10 +262,10 @@ async function handleDelete(openid, event) {
     await transaction.commit()
     task.status = 'COMPLETED'
     task.completed_at = db.serverDate()
-  } catch (e) {
+  } catch (_) {
     task.status = 'FAILED'
     task.failed_stage = 'DB_CLEANUP'
-    task.last_error = e.message || '数据库清理失败'
+    task.last_error = 'DB_CLEANUP_FAILED'
   }
 
   const r = await db.collection('deletion_tasks').add({ data: task })
@@ -278,22 +276,14 @@ async function handleDelete(openid, event) {
 }
 
 // ============================================================
-exports.main = async (event, context) => {
-  const openid = getOpenId()
-  if (!openid) return { code: 'AUTH_FAILED', message: '身份验证失败' }
-  try {
-    await checkUserActive(openid)
-    switch (event.type) {
-      case 'list':   return handleList(openid, event)
-      case 'detail': return handleDetail(openid, event)
-      case 'delete': return handleDelete(openid, event)
-      default:       return { code: 'UNKNOWN_TYPE', message: '支持: list | detail | delete' }
-    }
-  } catch (err) {
-    if (err.code && err.code !== 'INTERNAL_ERROR') {
-      return { code: err.code, message: err.message }
-    }
-    console.error('[photo]', err)
-    return { code: err.code || 'INTERNAL_ERROR', message: err.message || '服务异常' }
-  }
-}
+exports.main = createBusinessMain({
+  domain: 'photo',
+  cloud,
+  db,
+  logger,
+  handlers: {
+    list: ({ openid, event }) => handleList(openid, event),
+    detail: ({ openid, event }) => handleDetail(openid, event),
+    delete: ({ openid, event }) => handleDelete(openid, event),
+  },
+})

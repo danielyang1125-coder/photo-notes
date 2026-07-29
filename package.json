@@ -1,0 +1,14 @@
+{
+  "name": "photo-notes",
+  "private": true,
+  "devDependencies": {
+    "@cloudbase/manager-node": "5.6.5",
+    "@cloudbase/node-sdk": "3.18.3"
+  },
+  "scripts": {
+    "backend:sync": "node scripts/sync-cloudfunction-shared.js",
+    "backend:check": "node scripts/backend-check.js",
+    "backend:test": "npm run backend:sync && node --test test/backend",
+    "backend:audit": "npm run backend:check && npm run backend:test && node scripts/backend-audit.js"
+  }
+}

@@ -1,180 +1,137 @@
-# 数据库初始化清单 — 图片笔记小程序 V1.0.0
+# 数据库与存储初始化清单 — 图片笔记小程序 V1.0.0
 
-> **关联文档**：[TECHNICAL-ARCHITECTURE-图片笔记小程序-V1.0.0.md](./TECHNICAL-ARCHITECTURE-图片笔记小程序-V1.0.0.md)  
-> **初始化脚本**：[scripts/db-init.js](../scripts/db-init.js)  
-> **目标环境**：`cloud1-d0gsee3m13c2b446c`（dev）
+> 权威清单来源：
+> [TECHNICAL-ARCHITECTURE-图片笔记小程序-V1.0.0.md](./TECHNICAL-ARCHITECTURE-图片笔记小程序-V1.0.0.md)
+> §4.3。真实云环境结果记录到
+> [BACKEND-CLOUD-ACCEPTANCE-DEV-01.md](./BACKEND-CLOUD-ACCEPTANCE-DEV-01.md)。
 
----
+## 1. 安全执行
 
-## 0. 初始化方式
+初始化脚本默认 dry-run，不包含默认环境 ID 或凭据：
 
-| 方式 | 适用场景 | 工具 |
+```text
+npm install
+node scripts/db-init.js --dry-run --env <environment-id>
+```
+
+核对计划后，显式执行写入：
+
+```text
+node scripts/db-init.js --apply --env <environment-id>
+```
+
+apply 需要 `CLOUDBASE_SECRET_ID` 和 `CLOUDBASE_SECRET_KEY`。环境 ID、
+凭据或 SDK 缺失时脚本安全失败；输出只包含环境 SHA-256 摘要、数量和安全错误码。
+脚本必须连续执行两次，第二次不得新增集合、索引或回填字段。
+
+## 2. 集合与索引
+
+共 7 个集合、21 个业务索引（不含平台内置 `_id` 索引）。
+
+### `users`
+
+| 索引 | 字段 | 类型 |
 |---|---|---|
-| **脚本初始化**（推荐） | 可重复执行、可审计、可 CI | `node scripts/db-init.js` |
-| **控制台手动** | 首次快速验证、无命令行环境 | 微信开发者工具 → 云开发 → 数据库 |
+| `status_idx` | `status:1` | 普通 |
 
-无论哪种方式，初始化后必须执行 §4 的验证步骤。
+### `photos`
 
----
-
-## 1. 集合与索引总览
-
-### 1.1 `users` — 用户
-
-| 索引 | 字段 | 类型 | 说明 |
-|---|---|---|---|
-| `status_idx` | `status: 1` | 普通 | cleanup 扫描 DELETING/DELETED 用户 |
-
-> ⚠️ 不需要手动创建 `_openid` 索引。CloudBase 对系统字段 `_openid` 已有内置索引；且 `_id = _openid`，主键本身唯一。手动创建会报冲突，此为预期行为。
-
-**安全权限**：仅云函数可读写（`READONLY` 对客户端）。
-
-### 1.2 `photos` — 图片
-
-| 索引 | 字段 | 类型 | 说明 |
-|---|---|---|---|
-| `list_idx` | `_openid: 1, upload_time: -1` | 普通 | 全部图片列表分页 |
-| `uncategorized_idx` | `_openid: 1, tag_count: 1, upload_time: -1` | 普通 | 未分类图片查询（`tag_count = 0`） |
-| `shoot_time_idx` | `_openid: 1, shoot_time: -1` | 普通 | 备注列表按拍摄时间排序 |
-
-**安全权限**：客户端不可直接读写。所有操作通过 photo/upload 云函数。
-
-**前置条件**：`uncategorized_idx` 创建前，必须对所有已有 `photos` 记录执行 `tag_count: 0` 回填。详见 §3。
-
-### 1.3 `notes` — 备注
-
-| 索引 | 字段 | 类型 | 说明 |
-|---|---|---|---|
-| `photo_idx` | `photo_id: 1` | 普通 | 根据图片 ID 查询备注列表 |
-| `created_at_idx` | `_openid: 1, created_at: -1` | 普通 | 备注列表按创建时间排序 |
-| `shoot_time_idx` | `_openid: 1, photo_shoot_time: -1` | 普通 | 备注列表按拍摄时间排序 |
-
-**安全权限**：客户端不可直接读写。所有操作通过 note 云函数。
-
-### 1.4 `tags` — 标签
-
-| 索引 | 字段 | 类型 | 说明 |
-|---|---|---|---|
-| `name_unique` | `_openid: 1, normalized_name: 1` | **复合唯一** | 用户内标签名称唯一 |
-| `list_idx` | `_openid: 1, last_used_at: -1, updated_at: -1, created_at: -1` | 普通 | 标签列表固定排序（最近使用优先） |
-
-**安全权限**：客户端 `DENY` 所有读写。仅 tag 云函数可操作。
-
-> ⚠️ `name_unique` 是业务正确性的基础设施。不建此索引，"先查后插"无法防止并发创建同名标签。
-
-### 1.5 `photo_tags` — 图片-标签关联
-
-| 索引 | 字段 | 类型 | 说明 |
-|---|---|---|---|
-| `relation_unique` | `_openid: 1, photo_id: 1, tag_id: 1` | **复合唯一** | 防止同一图片重复关联同一标签 |
-| `tag_filter_idx` | `_openid: 1, tag_id: 1, photo_upload_time: -1` | 普通 | 按标签筛选图片分页 |
-| `photo_relation_idx` | `_openid: 1, photo_id: 1` | 普通 | 单图标签查询、图片删除级联 |
-
-**安全权限**：客户端 `DENY` 所有读写。仅 tag/photo/cleanup 云函数可操作。
-
-### 1.6 `deletion_tasks` — 删除任务
-
-| 索引 | 字段 | 类型 | 说明 |
-|---|---|---|---|
-| `user_status_idx` | `_openid: 1, status: 1` | 普通 | 查询用户待处理删除任务 |
-| `retry_idx` | `status: 1, retry_count: 1` | 普通 | cleanup 扫描失败任务重试 |
-
-**安全权限**：客户端不可读写。仅 account/photo/cleanup 云函数可操作。
-
----
-
-## 2. 集合安全权限配置
-
-在云开发控制台 → 数据库 → 选择集合 → 权限设置：
-
-| 集合 | 权限 | 说明 |
+| 索引 | 字段 | 类型 |
 |---|---|---|
-| `users` | **仅创建者可读写** | 用户只通过云函数访问自己的记录 |
-| `photos` | **仅创建者可读写** | 同上 |
-| `notes` | **仅创建者可读写** | 同上 |
-| `tags` | **自定义安全规则**（拒绝所有客户端） | `{ "read": false, "write": false }` |
-| `photo_tags` | **自定义安全规则**（拒绝所有客户端） | `{ "read": false, "write": false }` |
-| `deletion_tasks` | **仅创建者可读写** | 用户只通过云函数访问自己的记录 |
+| `photo_task_unique` | `_openid:1, task_id:1` | UNIQUE |
+| `photo_attempt_unique` | `_openid:1, upload_attempt_id:1` | UNIQUE |
+| `photo_list_cursor_idx` | `_openid:1, status:1, upload_time:-1, _id:-1` | 普通 |
+| `photo_uncategorized_cursor_idx` | `_openid:1, status:1, tag_count:1, upload_time:-1, _id:-1` | 普通 |
 
-所有业务数据的 `_openid` 隔离在云函数中通过 `cloud.getWXContext().OPENID` 强制实施。
+### `notes`
 
----
+| 索引 | 字段 | 类型 |
+|---|---|---|
+| `note_photo_idx` | `photo_id:1` | 普通 |
+| `note_created_desc_cursor_idx` | `_openid:1, created_at:-1, _id:-1` | 普通 |
+| `note_created_asc_cursor_idx` | `_openid:1, created_at:1, _id:1` | 普通 |
+| `note_shoot_desc_cursor_idx` | `_openid:1, photo_shoot_time:-1, _id:-1` | 普通 |
+| `note_shoot_asc_cursor_idx` | `_openid:1, photo_shoot_time:1, _id:1` | 普通 |
 
-## 3. 数据回填：`photos.tag_count`
+### `tags`
 
-`photos` 集合中的 `tag_count` 字段默认值必须为 `0`。如果环境中有测试图片（例如 QuickStart 遗留数据），需要执行回填：
+| 索引 | 字段 | 类型 |
+|---|---|---|
+| `tag_name_unique` | `_openid:1, normalized_name:1` | UNIQUE |
+| `tag_list_idx` | `_openid:1, last_used_at:-1, updated_at:-1, created_at:-1` | 普通 |
 
-```javascript
-// 在 user 云函数中临时添加，或通过云开发控制台数据库操作执行
-const _ = db.command
-await db.collection('photos')
-  .where({ tag_count: _.exists(false) })
-  .update({ data: { tag_count: 0 } })
-```
+### `photo_tags`
 
-回填完成并验证后，再创建 `uncategorized_idx` 索引。如果跳过回填直接创建索引，已有图片在【未分类】查询中将被遗漏。
+| 索引 | 字段 | 类型 |
+|---|---|---|
+| `photo_tag_relation_unique` | `_openid:1, photo_id:1, tag_id:1` | UNIQUE |
+| `photo_tag_filter_cursor_idx` | `_openid:1, tag_id:1, photo_upload_time:-1, _id:-1` | 普通 |
+| `photo_tag_photo_idx` | `_openid:1, photo_id:1` | 普通 |
 
----
+### `upload_attempts`
 
-## 4. 初始化后验证
+| 索引 | 字段 | 类型 |
+|---|---|---|
+| `attempt_task_unique` | `_openid:1, task_id:1` | UNIQUE |
+| `attempt_expire_idx` | `status:1, expires_at:1` | 普通 |
+| `attempt_lease_idx` | `status:1, confirm_lease_expire_at:1` | 普通 |
 
-### 4.1 索引存在性
+### `deletion_tasks`
 
-在云开发控制台 → 数据库 → 选择集合 → 索引管理，逐一核对 §1 中列出的全部索引。
+| 索引 | 字段 | 类型 |
+|---|---|---|
+| `delete_task_unique` | `_openid:1, task_key:1` | UNIQUE |
+| `delete_dispatch_idx` | `type:1, status:1, next_retry_at:1` | 普通 |
+| `delete_lease_idx` | `type:1, status:1, lease_expire_at:1` | 普通 |
 
-或者在云函数中执行：
+## 3. 回填
 
-```javascript
-const collections = ['users','photos','notes','tags','photo_tags','deletion_tasks']
-for (const name of collections) {
-  const result = await db.collection(name).get()
-  console.log(`${name}: ${result.data.length} docs`)
-}
-```
+仅对缺失字段的既有 `photos` 写入：
 
-### 4.2 唯一键冲突验证
+| 字段 | 缺失时写入 |
+|---|---|
+| `status` | `ACTIVE` |
+| `updated_at` | 脚本执行时间 |
+| `tag_count` | `0` |
 
-在 user 云函数中临时添加测试逻辑，验证：
+合法现值（包括 `DELETING`、非零 `tag_count` 和已有时间）不得覆盖。脚本在索引
+创建前回填，在结束前重新统计三个缺失字段；任一剩余数量非零即失败。
 
-1. 插入两条 `normalized_name` 相同的 `tags` 记录，第二条应抛唯一键冲突。
-2. 插入两条 `(photo_id, tag_id)` 相同的 `photo_tags` 记录，第二条应抛唯一键冲突。
+## 4. 客户端权限
 
-确认错误结构和错误码可在代码中映射。
+7 个数据库集合均设为客户端拒绝读写，仅云函数使用服务端身份访问。不得使用
+“仅创建者可读写”作为替代，因为业务要求客户端不能绕过云函数的 ACTIVE 状态、
+内容审核、配额、归属和响应投影。
 
-### 4.3 事务能力验证
+存储权限必须满足：
 
-在 user 云函数中验证 `db.startTransaction()` 可用：
+- `uploads/pending/`：客户端只能写服务端签发的随机路径，不能读、覆盖他人对象或删除。
+- `photos/active/`：客户端不能读、写、覆盖或删除；仅云函数可管理。
+- 图片只通过鉴权接口生成短期临时 URL，越权和过期 URL 不可用。
 
-```javascript
-const transaction = await db.startTransaction()
-try {
-  // 测试读写
-  await transaction.collection('photos').add({ data: { _openid: 'test', tag_count: 0 }})
-  await transaction.commit()
-} catch (e) {
-  await transaction.rollback()
-  console.error('事务测试失败:', e)
-}
-```
+权限规则由目标环境控制台/API 配置后，必须执行正向和反向用例；仓库模板不能替代
+云环境证据。
 
-### 4.4 核心链路验证
+## 5. 触发器与运行配置
 
-按顺序验证最小闭环：
+`cloudfunctions/cleanup/config.json` 必须声明：
 
-```
-1. user/login  → 返回 { status: 'ACTIVE', isNewUser: true }
-2. wx.cloud.uploadFile() → 返回 fileID
-3. upload/confirm → 创建 photo 记录，返回 photoId
-4. cloud.getTempFileURL() → 返回可访问临时 URL
-5. imageMogr2 参数拼接 → 缩略图正常显示
-```
+| TriggerName | 计划 |
+|---|---|
+| `deleteTaskWorker` | 每 5 分钟 |
+| `dailyCleanup` | 每日 03:00 |
 
----
+生产/测试环境按 [backend-runtime.env.example](../config/backend-runtime.env.example)
+显式配置 HMAC 密钥和 feature flags。仓库不得保存真实值。
 
-## 5. 操作记录
+## 6. 云环境验证
 
-| 日期 | 操作人 | 操作内容 | 结果 |
-|---|---|---|---|
-| — | — | — | — |
+必须在 DEV-13 发布验收前完成：
 
-初始化完成后在此记录，便于审计和问题回溯。
+1. 核对 7 个集合、21 个索引及六道唯一约束。
+2. 使用 explain 验证 ALL、UNCATEGORIZED、TAG、备注四排序、attempt 和删除任务查询。
+3. 验证复合索引反向扫描能力；未验证前保留备注升降序四个索引。
+4. 执行数据库客户端全部 DENY、pending 正向上传、active 反向读写删用例。
+5. 验证双触发器实际按 TriggerName 执行且日志不含敏感数据。
+
+所有结果填写到 DEV-01 云环境验收记录；未执行项保持 `PENDING`，不得推断为通过。

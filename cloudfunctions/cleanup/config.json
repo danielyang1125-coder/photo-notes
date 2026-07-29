@@ -1,6 +1,11 @@
 {
   "triggers": [
     {
+      "name": "deleteTaskWorker",
+      "type": "timer",
+      "config": "0 */5 * * * * *"
+    },
+    {
       "name": "dailyCleanup",
       "type": "timer",
       "config": "0 0 3 * * * *"

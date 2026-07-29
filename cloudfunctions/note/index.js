@@ -2,25 +2,11 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
+const { createBusinessMain } = require('./lib/shared/router')
+const { createSecurityLogger } = require('./lib/shared/security-log')
+const logger = createSecurityLogger()
 
 const NOTE_MAX_CODE_POINTS = 1000
-
-function getOpenId() {
-  return cloud.getWXContext().OPENID
-}
-
-async function checkUserActive(openid) {
-  try {
-    const user = await db.collection('users').doc(openid).get()
-    if (!user.data || user.data.status !== 'ACTIVE') {
-      throw { code: 'USER_NOT_ACTIVE', message: '账号状态异常' }
-    }
-    return user.data
-  } catch (e) {
-    if (e.code) throw e
-    throw { code: 'USER_NOT_ACTIVE', message: '用户不存在' }
-  }
-}
 
 // Unicode code point 计数
 function countCodePoints(str) {
@@ -61,7 +47,11 @@ async function handleAdd(openid, event) {
     if (e.errCode === 87014) {
       return { code: 'CONTENT_REVIEW_FAILED', message: '内容不合规' }
     }
-    console.error('[note] msgSecCheck 异常:', e.errCode, e.message)
+    logger.error({
+      event: 'note.content_review',
+      result: 'FAILURE',
+      safeErrorCode: 'CONTENT_REVIEW_UNAVAILABLE',
+    })
     return { code: 'CONTENT_REVIEW_UNAVAILABLE', message: '服务暂时不可用，请稍后重试' }
   }
 
@@ -113,7 +103,11 @@ async function handleUpdate(openid, event) {
     if (e.errCode === 87014) {
       return { code: 'CONTENT_REVIEW_FAILED', message: '内容不合规' }
     }
-    console.error('[note] msgSecCheck 异常:', e.errCode, e.message)
+    logger.error({
+      event: 'note.content_review',
+      result: 'FAILURE',
+      safeErrorCode: 'CONTENT_REVIEW_UNAVAILABLE',
+    })
     return { code: 'CONTENT_REVIEW_UNAVAILABLE', message: '服务暂时不可用，请稍后重试' }
   }
 
@@ -216,8 +210,12 @@ async function handleList(openid, event) {
           }
         })
         notes.forEach(n => { n.thumbnail_url = urlMap[n.photo_file_id] || '' })
-      } catch (e) {
-        console.error('[note] getTempFileURL 失败:', e.message)
+      } catch (_) {
+        logger.error({
+          event: 'note.thumbnail_url',
+          result: 'FAILURE',
+          safeErrorCode: 'INTERNAL_ERROR',
+        })
         notes.forEach(n => { n.thumbnail_url = '' })
       }
     }
@@ -248,23 +246,15 @@ async function handleList(openid, event) {
 }
 
 // ============================================================
-exports.main = async (event, context) => {
-  const openid = getOpenId()
-  if (!openid) return { code: 'AUTH_FAILED', message: '身份验证失败' }
-  try {
-    await checkUserActive(openid)
-    switch (event.type) {
-      case 'add':    return handleAdd(openid, event)
-      case 'update': return handleUpdate(openid, event)
-      case 'delete': return handleDelete(openid, event)
-      case 'list':   return handleList(openid, event)
-      default:       return { code: 'UNKNOWN_TYPE', message: '支持: add | update | delete | list' }
-    }
-  } catch (err) {
-    if (err.code && err.code !== 'INTERNAL_ERROR') {
-      return { code: err.code, message: err.message }
-    }
-    console.error('[note]', err)
-    return { code: err.code || 'INTERNAL_ERROR', message: err.message || '服务异常' }
-  }
-}
+exports.main = createBusinessMain({
+  domain: 'note',
+  cloud,
+  db,
+  logger,
+  handlers: {
+    add: ({ openid, event }) => handleAdd(openid, event),
+    update: ({ openid, event }) => handleUpdate(openid, event),
+    delete: ({ openid, event }) => handleDelete(openid, event),
+    list: ({ openid, event }) => handleList(openid, event),
+  },
+})

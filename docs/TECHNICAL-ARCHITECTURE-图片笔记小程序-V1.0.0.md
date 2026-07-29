@@ -7,7 +7,8 @@
 > **需求基线**：[PRD-图片笔记小程序-V1.0.0.md](./PRD-图片笔记小程序-V1.0.0.md)
 > **增量追溯**：[PRD-图片笔记小程序-V1.0.0-标签功能增量.md](./PRD-图片笔记小程序-V1.0.0-标签功能增量.md)（BR-029～BR-054）
 > **设计基线**：[DESIGN-SYSTEM-图片笔记小程序-V1.0.0.md](./DESIGN-SYSTEM-图片笔记小程序-V1.0.0.md)
-> **基线日期**：2026-07-28
+> **P0 修复基线**：[TECHNICAL-DESIGN-图片笔记小程序-V1.0.0-P0问题修复.md](./TECHNICAL-DESIGN-图片笔记小程序-V1.0.0-P0问题修复.md)
+> **基线日期**：2026-07-29
 
 ---
 
@@ -45,7 +46,7 @@
 | 6 个页面 | photos, notes, preview, settings, deletion-status, tag-manager |
 | 11 个自定义组件 | 基线 6 个组件 + tag-filter-bar、photo-tag-section、tag-picker、tag-manager-list、tag-name-editor |
 | 7 个云函数 | user, photo, note, upload, account, tag, cleanup |
-| 6 个数据库集合 | users, photos, notes, tags, photo_tags, deletion_tasks |
+| 7 个数据库集合 | users, photos, notes, tags, photo_tags, deletion_tasks, upload_attempts |
 | 主题 CSS Tokens | `theme/tokens.wxss`（包含标签状态 Token） |
 
 ---
@@ -93,9 +94,10 @@
 │              │                                                  │
 │  ┌───────────┴─────────────┐   ┌──────────────────┐            │
 │  │    云数据库               │   │   云存储           │            │
-│  │    users / photos / notes│   │   photos/          │            │
+│  │    users / photos / notes│   │   uploads/pending/ │            │
 │  │    tags / photo_tags     │   │     {openid}/      │            │
-│  │    deletion_tasks        │   │       *.jpg        │            │
+│  │    deletion_tasks /      │   │   photos/active/   │            │
+│  │    upload_attempts       │   │     *.jpg|*.png    │            │
 │  └─────────────────────────┘   │   万象优图 CI 处理   │            │
 │                                 └──────────────────┘            │
 └────────────────────────────────────────────────────────────────┘
@@ -104,10 +106,21 @@
 **核心交互**：
 - 前端通过 `wx.cloud.callFunction({ name, data })` 调用云函数
 - 云函数通过 `wx-server-sdk` 操作数据库和云存储
-- 图片上传：本地压缩 → `wx.cloud.uploadFile()` → 云函数 `upload/confirm` 创建数据库记录
+- 图片上传：`upload/prepare` 签发 pending 路径 → 本地压缩并上传 → `upload/confirm` 服务端验证、提升 active 对象并原子入库
 - 身份认证：云函数 `cloud.getWXContext().OPENID` 获取唯一标识，实现数据隔离
 - 标签能力：`tag` 云函数统一处理标签 CRUD、单图增量关联和上传后批量关联
 - 故障隔离：PG-002 的全部图片与快捷标签并行加载；标签请求失败只降级标签区，不阻断【全部】图片浏览
+
+### 2.1 核心不变量
+
+1. 同一用户的同一 `task_id` 最多对应一条有效 photo，唯一索引是并发幂等的最终防线。
+2. `users.used_bytes` 等于该用户仍计费的 ACTIVE photo 与尚未 finalize 的 DELETING photo 大小总和。
+3. photo 的 `file_id/file_size/format/width/height` 只取服务端验证后的 active 对象元数据。
+4. 客户端只能写服务端签发的 pending 路径，不能写、覆盖或删除 active 对象。
+5. upload attempt 只能从 `PREPARED` 进入 `CONFIRMED/CANCELED/EXPIRED` 之一；confirm 与 cancel 以服务端事务提交顺序线性化。
+6. `DELETING` photo 从所有业务读写接口立即隐藏；删除任务的每个计数与空间变更最多执行一次。
+7. 图片和备注列表使用稳定复合排序与 keyset cursor，不使用 offset/`skip`。
+8. 不存在、已删除和属于他人的具体资源对客户端不可区分。
 
 ---
 
@@ -280,7 +293,7 @@ PG-002 自身维护且不持久化：
 photoPageState: {
   filter: { scope: 'ALL', tagId: null }, // ALL | UNCATEGORIZED | TAG
   list: [],
-  page: 1,
+  nextCursor: null,
   hasMore: true,
   scrollTop: 0
 }
@@ -307,12 +320,16 @@ Canvas 离屏压缩:
   · JPEG 初始质量 85%, 目标 ≤ 3MB
   · 不达标逐步降质量 (不低于约定最低值), 仍失败则标记无法处理
     ↓
+callFunction('upload', { type: 'prepare', taskId })
+  → 返回 attemptId + 服务端随机 pending cloudPath
+    ↓
 上传队列 (并发 ≤3)
     ↓
-wx.cloud.uploadFile() → cloudPath: photos/{openid_short}/{timestamp}_{random8}.jpg
+wx.cloud.uploadFile() → 仅上传到签发的 uploads/pending/{random32}.bin
     ↓
-callFunction('upload', { type: 'confirm', taskId, fileId, ... })
-→ 云函数创建 photo 记录 + $inc used_bytes
+callFunction('upload', { type: 'confirm', attemptId, fileId, shootTime, timeSource })
+→ 云函数校验真实文件并提升到 photos/active/
+→ photo + used_bytes + attempt 在同一事务提交
 ```
 
 ### 3.8 上传队列管理
@@ -331,10 +348,10 @@ callFunction('upload', { type: 'confirm', taskId, fileId, ... })
 └─────────────────────────────────────────────┘
 ```
 
-- 每个任务有唯一幂等标识 `{batchId}_{fileIndex}`
+- 每个任务有唯一幂等标识 `{batchId}_{fileIndex}`，服务端以 `(_openid, task_id)` 唯一索引兜底
 - 终态（成功/已取消）不可再操作
 - 失败 → 待处理 → 重试
-- 离开面板时：成功项保留，其余 → 已取消（引用 BR-025）
+- 离开面板时先批量调用 `upload/cancel`，再忽略本地迟到回调；若 confirm 已先提交，则该项保持成功并返回原 `photoId`
 - `upload/confirm` 成功结果必须保存服务端返回的 `photoId`；批量标签只收集本批终态为成功的 `photoId`
 - 全部任务结束且成功数 ≥1 时显示“为本批图片添加标签”；“完成”始终允许跳过标签步骤
 - 批量标签失败不回退上传状态；TagPicker 保留选择，失败任务仍按原上传流程重试且不自动继承已提交标签
@@ -350,12 +367,12 @@ callFunction('upload', { type: 'confirm', taskId, fileId, ... })
 | 云函数 | type 值 | 职责 |
 |---|---|---|
 | `user` | `login`, `getStatus` | 登录/身份建立、用户状态查询 |
-| `photo` | `list`, `detail`, `delete` | 图片列表(含缩略图URL)、详情+备注、级联删除 |
+| `photo` | `list`, `detail`, `delete`, `getDeleteStatus` | 图片列表、详情、逻辑删除申请和删除状态 |
 | `note` | `add`, `update`, `delete`, `list` | 备注 CRUD（含乐观并发控制、排序） |
-| `upload` | `confirm` | 上传确认：幂等创建图片记录 |
+| `upload` | `prepare`, `confirm`, `cancel` | 上传签发、可信文件验证与提升、幂等确认和取消 |
 | `account` | `requestDeletion`, `getDeletionStatus` | 注销申请与状态查询 |
 | `tag` | `list`, `create`, `rename`, `delete`, `getPhotoTags`, `updatePhotoTags`, `batchAddPhotoTags` | 标签 CRUD、单图增量关联、上传后批量关联 |
-| `cleanup` | (定时触发器) | 孤立对象清理、注销任务推进、标签派生计数校正 |
+| `cleanup` | (定时触发器) | attempt 过期、孤立对象与删除任务推进、注销任务推进、标签派生计数校正 |
 
 `tag` 云函数统一承载标签名称规范化、归属校验和关联事务；`photo/delete`、`account`、`cleanup` 按同一关联清理契约维护计数。客户端不得直接读写 `tags` 或 `photo_tags` 集合。
 
@@ -418,8 +435,10 @@ exports.main = async (event, context) => {
 {
   _id: ObjectId,
   _openid: "oA_...",
-  file_id: "cloud://env-id.xxx",  // 云存储 fileID
+  status: "ACTIVE",               // ACTIVE | DELETING
+  file_id: "cloud://env-id.xxx/photos/active/...", // 已验证 active 对象
   task_id: "batch_file03",        // 幂等键
+  upload_attempt_id: "attempt-id",
   file_size: 1500000,             // 压缩后字节
   width: 2560, height: 1920,
   format: "JPEG",                 // JPG | JPEG | PNG
@@ -428,12 +447,15 @@ exports.main = async (event, context) => {
   upload_time: Date,
   note_count: 0,
   tag_count: 0,                   // 派生计数；0 即符合【未分类】查询
-  created_at: Date
+  created_at: Date,
+  updated_at: Date,
+  deleting_at: null
 }
 // 索引：
-// { _openid: 1, upload_time: -1 }  — 列表查询
-// { _openid: 1, tag_count: 1, upload_time: -1 } — 未分类分页
-// { _openid: 1, shoot_time: -1 }   — 备注排序用
+// { _openid: 1, task_id: 1 } UNIQUE
+// { _openid: 1, upload_attempt_id: 1 } UNIQUE
+// { _openid: 1, status: 1, upload_time: -1, _id: -1 } — ALL cursor
+// { _openid: 1, status: 1, tag_count: 1, upload_time: -1, _id: -1 } — 未分类 cursor
 ```
 
 `tag_count` 是由有效 `photo_tags` 关系派生的查询字段，不接受客户端传值。新增图片固定初始化为 `0`；关联事务仅在关系实际新增或移除时增减，并保证范围为 0～5。
@@ -454,8 +476,10 @@ exports.main = async (event, context) => {
 }
 // 索引：
 // { photo_id: 1 }                       — 图片详情查询备注
-// { _openid: 1, created_at: -1 }       — 备注列表（默认排序）
-// { _openid: 1, photo_shoot_time: -1 } — 按拍摄时间排序
+// { _openid: 1, created_at: -1, _id: -1 }
+// { _openid: 1, created_at: 1, _id: 1 }
+// { _openid: 1, photo_shoot_time: -1, _id: -1 }
+// { _openid: 1, photo_shoot_time: 1, _id: 1 }
 ```
 
 **设计要点**：
@@ -495,62 +519,110 @@ exports.main = async (event, context) => {
 }
 // 索引：
 // { _openid: 1, photo_id: 1, tag_id: 1 } UNIQUE — 防止重复关联
-// { _openid: 1, tag_id: 1, photo_upload_time: -1 } — 按标签分页
+// { _openid: 1, tag_id: 1, photo_upload_time: -1, _id: -1 } — 按标签 cursor 分页
 // { _openid: 1, photo_id: 1 } — 单图标签、图片删除
 ```
 
 `photo_tags` 是图片与标签关系的权威数据。`tags.photo_count`、`photos.tag_count` 和 `photo_upload_time` 均为查询冗余：只允许服务端事务维护，并由定时校正任务复核。
 
+#### `upload_attempts` 集合
+
+```javascript
+{
+  _id: "random-attempt-id",
+  _openid: "owner-openid",
+  task_id: "batch_file03",
+  status: "PREPARED",              // PREPARED | CONFIRMED | CANCELED | EXPIRED
+  pending_cloud_path: "uploads/pending/{random32}.bin",
+  pending_file_id: null,
+  promoted_file_id: null,
+  verified_meta: null,             // 服务端解析的 size/width/height/format/sha256
+  confirm_lease_token: null,
+  confirm_lease_expire_at: null,
+  photo_id: null,
+  expires_at: Date,                // 默认 created_at + 24h
+  created_at: Date,
+  updated_at: Date,
+  confirmed_at: null,
+  canceled_at: null
+}
+// 索引：
+// { _openid: 1, task_id: 1 } UNIQUE
+// { status: 1, expires_at: 1 }
+// { status: 1, confirm_lease_expire_at: 1 }
+```
+
+`CONFIRMED/CANCELED/EXPIRED` 为终态。终态记录保留 7 天用于幂等重放；confirm 的下载、解析、审核和提升在短事务外执行，以带过期时间的租约防止并发处理，最终事务必须再次校验 attempt 状态和租约 token。
+
 #### `deletion_tasks` 集合
 
 ```javascript
 {
-  _id: ObjectId,
+  _id: "random-task-id",
   _openid: "oA_...",
   type: "ACCOUNT_DELETION",        // ACCOUNT_DELETION | PHOTO_DELETE
-  photo_id: ObjectId,              // PHOTO_DELETE 类型必填
-  status: "PENDING",               // PENDING → DELETING → COMPLETED（或 FAILED → RETRYING）
-  failed_stage: "string",          // STORAGE_DELETE | DB_CLEANUP — 失败时记录
-  last_error: "string",            // 最后一次错误消息
+  task_key: "PHOTO_DELETE:{photoId}",
+  photo_id: ObjectId,
+  file_id: "cloud://...",
+  file_size: 1500000,
+  status: "PENDING",               // PENDING | PROCESSING | RETRYING | COMPLETED
+  current_stage: "STORAGE_DELETE",
+  stage_cursor: null,
+  lease_token: null,
+  lease_expire_at: null,
+  next_retry_at: Date,
   retry_count: 0,
+  last_error_code: null,
+  last_error_safe_message: null,
   applied_at: Date,
-  completed_at: Date
+  updated_at: Date,
+  completed_at: null
 }
 // 索引：
-// { _openid: 1, status: 1 }               — 查询用户待处理删除任务
-// { status: 1, retry_count: 1 }           — cleanup 扫描失败任务
+// { _openid: 1, task_key: 1 } UNIQUE
+// { type: 1, status: 1, next_retry_at: 1 }
+// { type: 1, status: 1, lease_expire_at: 1 }
 ```
+
+`last_error_safe_message` 不得包含完整 fileID、OPENID、图片/备注内容或标签名称。
 
 #### 事务与一致性边界
 
 - CloudBase 文档型数据库通过服务端 Node SDK 提供 ACID 事务；标签写操作只在云函数内执行。参考：[事务操作](https://docs.cloudbase.net/database/transaction)。
 - `tags(_openid, normalized_name)` 与 `photo_tags(_openid, photo_id, tag_id)` 使用唯一索引作为并发最终防线。参考：[索引管理](https://docs.cloudbase.net/database/data-index)。
 - 创建/重命名标签：校验、唯一性写入和返回摘要处于同一事务；捕获唯一键冲突并映射为 `TAG_NAME_DUPLICATED`。
+- 上传确认：最终短事务内读取本人 PREPARED attempt 与 ACTIVE user，校验租约和配额后同时创建 ACTIVE photo、`users.used_bytes += verified.file_size`、attempt → CONFIRMED。任一步失败全部不提交；唯一冲突后读取原 photo 作为幂等成功。
 - 单图关联：锁定本人图片及涉及标签，计算集合差异；只有实际新增/移除的关系才更新双方计数。事务冲突由 SDK 重试，唯一键冲突按已存在关系处理。
 - 标签删除：在服务端事务中删除本人标签及全部关系，并按受影响图片实际移除数递减 `photos.tag_count`；重复删除返回成功。
-- 图片删除：采用**状态机 + cleanup 补偿**模式。云存储（COS）与云数据库不能形成同一 ACID 事务，因此分阶段执行：
-  1. **PENDING → DELETING**：创建 `deletion_tasks` 记录（`type: "PHOTO_DELETE"`），标记用户和图片信息。
-  2. **阶段 STORAGE_DELETE**：删除云存储对象（COS `DELETE` 幂等，对象不存在不报错）。
-  3. **阶段 DB_CLEANUP**：在数据库事务中删除备注 → 删除 `photo_tags` 关系 → 递减相关 `tags.photo_count` → 删除 `photos` 记录 → 原子扣减 `users.used_bytes`。
-  4. **DELETING → COMPLETED**：两阶段均成功后标记完成。
-  5. **任意阶段失败 → FAILED**：记录 `failed_stage` 和 `last_error`，次日由 `cleanup` 定时任务扫描 `FAILED`/`RETRYING` 任务重试。
-  6. **cleanup 补偿**：每日扫描孤立云存储对象（有文件无 photo 记录）补偿删除；聚合校正 `tags.photo_count` 和 `photos.tag_count`。
+- 图片删除：采用**立即逻辑隐藏 + 分阶段 cleanup 补偿**。`photo/delete` 短事务把 ACTIVE photo 改为 DELETING，并创建或返回唯一任务；空间在任务 COMPLETED 前仍计费。
+  1. `STORAGE_DELETE`：幂等删除 active 对象。
+  2. `NOTES_CLEANUP`：分页删除备注。
+  3. `PHOTO_TAGS_CLEANUP`：分页删除关系，只按实际删除关系递减标签计数。
+  4. `PHOTO_FINALIZE`：同一事务确认 photo 仍为 DELETING，删除 photo、精确扣减一次 `used_bytes`、任务改为 COMPLETED。
+  5. 每批数据库变更和 `stage_cursor` 前移必须在同一事务；失败改为 RETRYING 并由短租约处理器从断点重试，photo 不恢复 ACTIVE。
 - 批量添加：最多 20 张图片 × 5 个标签，以“每张图片一个事务”执行集合合并；某张图片失效或合并后超限不回滚其他图片。
 - 请求重放依靠“唯一关系 + 读取实际差异后更新计数”保证状态幂等；`requestId` 用于链路追踪和识别重复调用，不记录标签名称。
 - 每日 `cleanup` 重新聚合有效关系，修正 `tags.photo_count` 与 `photos.tag_count`；修正前后值仅写安全审计日志。
 
+#### DELETING 图片业务隔离
+
+`photo/list/detail`、`note/add`、`tag/getPhotoTags/updatePhotoTags/batchAddPhotoTags` 均须把本人 `photo.status = ACTIVE` 作为前置条件。TAG 关系分页和备注列表读取候选后还要批量复核 ACTIVE photo；失效关系或冗余 note 跳过并交给 cleanup 清理。删除处理期间不得新增备注或标签关系。
+
 #### 上线前数据准备
 
-V1.0.0 为上线前增量，不设计线上迁移流程。建立未分类索引前，对开发和测试环境已有 `photos` 一次性回填 `tag_count: 0`；回填完成后抽样确认所有既有图片均可在【未分类】查询中返回。
+V1.0.0 为上线前增量，不设计线上迁移流程。建立新索引前，对开发和测试环境已有 `photos` 一次性回填 `tag_count: 0`、`status: "ACTIVE"` 和 `updated_at`；回填完成后抽样确认所有既有图片均可在【未分类】查询中返回。
 
 ### 4.4 云存储设计
 
 ```
 cloud://env-id/
-└── photos/
-    └── {openid_short}/
-        └── {timestamp}_{random8}.jpg
+├── uploads/pending/{random32}.bin  # 客户端仅能写服务端签发的随机路径
+└── photos/active/{random32}.{ext}  # 仅云函数可写，客户端禁止覆盖/删除
 ```
+
+路径不得包含完整或截断 OPENID，扩展名不作为格式依据。`random32` 使用服务端密码学安全随机数；只有 active fileID 可以写入 `photos.file_id`。
+
+`upload/confirm` 必须校验 fileID 所属环境和路径与 attempt 完全一致，下载 buffer 后以真实字节数、magic bytes 和解码结果确定大小、格式与尺寸，仅接受静态 JPEG/PNG。审核通过后由云函数把已验证 buffer 提升到随机 active 路径并保存 SHA-256；`shootTime/timeSource` 只做类型、枚举和合理范围校验，不宣称已由服务端验证 EXIF。
 
 **图片处理策略**（万象优图 CI）：
 - **缩略图**：临时 URL + `?imageMogr2/thumbnail/!200x200r`（云函数拼接）
@@ -562,19 +634,29 @@ cloud://env-id/
 ```json
 // cloudfunctions/cleanup/config.json
 {
-  "triggers": [{
-    "name": "dailyCleanup",
-    "type": "timer",
-    "config": "0 0 3 * * * *"
-  }]
+  "triggers": [
+    {
+      "name": "deleteTaskWorker",
+      "type": "timer",
+      "config": "0 */5 * * * * *"
+    },
+    {
+      "name": "dailyCleanup",
+      "type": "timer",
+      "config": "0 0 3 * * * *"
+    }
+  ]
 }
 ```
-清理内容（按执行顺序）：
-1. 扫描 `deletion_tasks` 中 `status: FAILED|RETRYING` 的任务，按 `failed_stage` 从断点重试。
-2. 扫描孤立云存储对象：遍历 `photos/` 目录，对比 `photos` 集合，删除无对应记录的文件。
-3. 扫描失效数据库引用：`photo_tags` 中有记录但 `photos` 中已删除的，清理关系并更新标签计数。
-4. 推进 `ACCOUNT_DELETION` 任务：重试注销各阶段，全部成功后解绑微信。
-5. 聚合校正：按有效 `photo_tags` 重新计算 `tags.photo_count` 和 `photos.tag_count`，仅修正不一致项并记录审计日志。
+
+删除任务至少每 5 分钟推进；全量补偿每日执行。处理内容：
+
+1. 推进 `deletion_tasks` 中可执行的 PENDING/RETRYING 或租约失效任务，按 `current_stage + stage_cursor` 从断点重试。
+2. 将到期 PREPARED attempt 改为 EXPIRED，清理 CANCELED/EXPIRED/CONFIRMED 的遗留 pending 对象和失效 confirm 租约。
+3. 分页扫描超过 24h、无有效 photo 且无有效 confirm 租约的 active 孤立对象并删除；不得无界遍历目录。
+4. 清理失效数据库引用并更新标签计数。
+5. 推进 `ACCOUNT_DELETION` 任务，全部成功后解绑微信。
+6. 聚合校正标签和图片派生计数，仅修正不一致项并记录安全审计日志。
 
 ---
 
@@ -593,7 +675,9 @@ const data = await db.collection('photos').where({ _openid: OPENID }).get()
 - 云函数从 `getWXContext().OPENID` 获取身份
 - 所有查询 `.where({ _openid: OPENID })` 为第一过滤条件
 - 标签、图片和关联的删改操作先分别校验资源所有权，并验证三者 `_openid` 一致
-- 不以“查不到”和“属于他人”之间的差异向客户端泄露标签名称、存在性或关联数量
+- 具体资源直接按 `_id + _openid + 业务状态` 查询；查不到统一返回该资源的 NOT_FOUND，不先全局查询再判断归属
+- Tag 的不存在、已删除、属于他人统一为 `TAG_NOT_FOUND`；Photo（含 DELETING）统一为 `PHOTO_NOT_FOUND`；Note 统一为 `NOT_FOUND`
+- UploadAttempt 与 DeletionTask 分别统一为 `UPLOAD_ATTEMPT_NOT_FOUND`、`DELETE_TASK_NOT_FOUND`
 - `DELETING` / `DELETED` 状态用户的所有业务接口直接拒绝
 
 ### 5.2 图片访问控制
@@ -601,6 +685,8 @@ const data = await db.collection('photos').where({ _openid: OPENID }).get()
 - 使用 `cloud.getTempFileURL()` 生成临时访问 URL（不暴露永久公开 URL）
 - 云函数校验身份后返回临时链接
 - 日志不记录完整 fileID、临时 URL、标签名称、图片内容或备注内容
+- 数据库全部 7 个集合对客户端设置 `read:false, write:false`，业务访问统一经过云函数
+- 云存储只允许客户端向签发的 `uploads/pending/` 随机路径上传；`photos/active/` 禁止客户端写、覆盖和删除
 
 ### 5.3 乐观并发控制
 
@@ -639,7 +725,7 @@ if (result.stats.updated === 0) {
 
 采用微信云调用 `security.imgSecCheck` + `security.msgSecCheck` 对用户上传内容进行合规检测。
 
-**审核策略**：先审后存——审核通过才写入数据库和云存储。
+**审核策略**：先审后入库——客户端文件先进入隔离的 pending 区，审核和真实文件校验通过后才提升到 active 区并写入数据库。
 
 **覆盖范围**：
 
@@ -652,12 +738,13 @@ if (result.stats.updated === 0) {
 **调用流程（以图片上传为例）**：
 
 ```
-客户端上传图片到云存储 → 获取 fileID
-  → callFunction('upload', { type:'confirm', fileId, ... })
+upload/prepare 签发 pending 路径 → 客户端上传并获取 fileID
+  → callFunction('upload', { type:'confirm', attemptId, fileId, ... })
+    → 校验环境、路径、magic bytes、真实大小与解码尺寸
     → cloud.downloadFile({ fileID })  // 获取图片 buffer
     → cloud.openapi.security.imgSecCheck({ media: { contentType, value: buffer } })
-      ├─ 通过 (errCode: 0) → 继续创建 photo 记录
-      └─ 不通过 (errCode: 87014) → 删除已上传文件，返回 { code: 'CONTENT_REVIEW_FAILED' }
+      ├─ 通过 → 提升到客户端不可写的 active 路径并执行最终事务
+      └─ 不通过 → 清理 pending/已提升孤立对象，返回 CONTENT_REVIEW_FAILED
 ```
 
 **异常处理**：
@@ -669,7 +756,7 @@ if (result.stats.updated === 0) {
 | 审核服务超时/不可用 | **阻断操作**，返回 `CONTENT_REVIEW_UNAVAILABLE`，前端提示"服务暂时不可用，请稍后重试" |
 
 **设计约束**：
-- 审核不通过的文件必须从云存储删除，避免产生孤立对象。
+- 审核不通过的文件必须从云存储删除，失败时由 attempt cleanup 补偿。
 - 云调用 `imgSecCheck` 对图片大小有 1MB 限制：压缩后的图片（≤3MB）可能超出，需在调用前二次压缩为审核专用 buffer（最长边 ≤750px，size ≤1MB），原始压缩文件仍用于存储。
 - 审核日志仅记录 `requestId` 和通过/拒绝结果，不记录图片内容、备注文本或标签名称。
 - V1.0 不设人工复核入口；用户在设置页可通过客服联系方式反馈误判。
@@ -694,22 +781,29 @@ if (result.stats.updated === 0) {
 
 ### 6.2 错误码
 
-| 错误码 | 说明 | 标签相关前端处理 |
+| 错误码 | 说明 | 前端处理 |
 |---|---|---|
 | `SUCCESS` | 操作成功 | 提交服务端返回数据 |
 | `AUTH_FAILED` | 身份验证失败 | 重新建立身份 |
-| `FORBIDDEN` / `USER_NOT_ACTIVE` | 资源无权访问 / 账号状态异常 | 不展示资源信息；进入受限流程 |
+| `FORBIDDEN` / `USER_NOT_ACTIVE` | 账号状态或系统策略禁止操作 | 进入受限流程；不用于具体资源归属错误 |
 | `NOT_FOUND` | 图片/备注不存在或已删除 | 刷新原页面 |
 | `CONFLICT` | 备注版本冲突（乐观锁） | 进入备注冲突处理 |
 | `VALIDATION_ERROR` | 通用输入校验失败 | 保留输入并显示字段错误 |
 | `SPACE_EXCEEDED` | 空间不足 | 保留上传任务并提示空间不足 |
-| `TAG_NOT_FOUND` | 标签不存在或已删除 | 刷新标签；筛选场景切换到【全部】 |
-| `TAG_ACCESS_DENIED` | 标签不属于当前用户 | 拒绝操作且不泄露资源信息 |
+| `TAG_NOT_FOUND` | 标签不存在、已删除或属于他人 | 刷新标签；筛选场景切换到【全部】 |
 | `TAG_NAME_INVALID` | 标签长度、字符或保留名称不合法 | 保留名称并显示对应字段错误 |
 | `TAG_NAME_DUPLICATED` | 本人范围规范化名称重复 | 提示使用已有标签 |
 | `TAG_LIMIT_REACHED` | 用户已有 100 个标签 | 禁用创建入口并刷新标签总数 |
 | `PHOTO_TAG_LIMIT_REACHED` | 单图集合合并后超过 5 个 | 保留选择并提示上限 |
-| `PHOTO_NOT_FOUND` | 图片不存在或已删除 | 关闭关联层并刷新/返回图片列表 |
+| `PHOTO_NOT_FOUND` | 图片不存在、DELETING、已删除或属于他人 | 关闭关联层并刷新/返回图片列表 |
+| `UPLOAD_ATTEMPT_NOT_FOUND` | attempt 不存在或属于他人 | 当前任务失败，不展示资源信息 |
+| `UPLOAD_ATTEMPT_CANCELED` | attempt 已取消 | 保持取消，不重试 confirm |
+| `UPLOAD_ATTEMPT_EXPIRED` | attempt 已过期 | 使用新 taskId 重新开始 |
+| `UPLOAD_CONFIRM_IN_PROGRESS` | 同一 attempt 正在确认 | 延迟重试，不重复上传 |
+| `UPLOAD_FILE_MISMATCH` | fileID 环境或路径不匹配 | 拒绝确认并记录安全事件 |
+| `UPLOAD_FILE_INVALID` | 真实文件格式、尺寸或解码失败 | 禁止入库并提示文件无效 |
+| `DELETE_TASK_NOT_FOUND` | 删除任务不存在或属于他人 | 停止轮询，不展示内部信息 |
+| `INVALID_CURSOR` | cursor 与资源、筛选或排序参数不匹配 | 清空 cursor 并刷新首屏 |
 | `DELETION_ALREADY_PENDING` | 已有未完成注销任务 | 进入注销状态页 |
 | `CONTENT_REVIEW_FAILED` | 图片/文本内容不合规 | 提示用户内容不合规，不保留上传任务 |
 | `CONTENT_REVIEW_UNAVAILABLE` | 审核服务不可用 | 提示稍后重试，保留上传任务 |
@@ -727,20 +821,26 @@ getStatus:   IN { type:"getStatus" }  →  OUT { status }
 #### photo 云函数
 
 ```
-list:    IN { type:"list", scope:"ALL"|"UNCATEGORIZED"|"TAG", tagId?, page, pageSize:20 }
+list:    IN { type:"list", scope:"ALL"|"UNCATEGORIZED"|"TAG", tagId?,
+             cursor:null|string, pageSize:20 }
          → OUT { list:[ {_id,thumbnail_url,width,height,note_count,shoot_time,
-                        time_source,upload_time} ], total, hasMore }
+                        time_source,upload_time} ], nextCursor, hasMore, total? }
 detail:  IN { type:"detail", photoId }
          → OUT { photo:{...compression_url...}, notes:[...], tags:[TagSummary] }
 delete:  IN { type:"delete", photoId }
          → OUT { taskId, status: "PENDING" }
-         说明：创建 PHOTO_DELETE 任务后立即返回；实际删除异步执行，结果通过 photo/list 和用户空间反映
+getDeleteStatus:
+         IN { type:"getDeleteStatus", taskId }
+         → OUT { taskId,photoId,status:"PENDING|PROCESSING|RETRYING|COMPLETED",
+                 updatedAt,completedAt }
 ```
 
 约束：
-- `ALL` 不接收 `tagId`；`UNCATEGORIZED` 查询 `photos.tag_count = 0`；`TAG` 必须传本人有效 `tagId`。
-- `TAG` 先按 `photo_tags(_openid, tag_id, photo_upload_time desc)` 分页取得图片 ID，再批量读取图片卡片字段并按关联结果恢复顺序。
+- `ALL` 不接收 `tagId`；`UNCATEGORIZED` 查询本人 `status=ACTIVE, tag_count=0`；`TAG` 必须传本人有效 `tagId`。
+- 图片固定按 `upload_time DESC, _id DESC`；`TAG` 关系固定按 `photo_upload_time DESC, _id DESC`。
+- `TAG` 按关系 cursor 取候选，再批量读取本人 ACTIVE photo 并恢复顺序；遇到 DELETING photo 或孤立关系继续扫描，`nextCursor` 取最后扫描的 relation。
 - 图片卡片结构不增加标签名称；`detail.tags` 最多 5 个。
+- `delete` 事务成功即表示申请被可靠接受：photo 立即 DELETING 并从全部业务接口隐藏，空间在任务 COMPLETED 后释放；状态接口不返回内部阶段、错误和 fileID。
 
 #### note 云函数
 
@@ -748,20 +848,28 @@ delete:  IN { type:"delete", photoId }
 add:     IN { type:"add", photoId, content }  →  OUT { note:{ _id,... } }
 update:  IN { type:"update", noteId, content, updatedAt }  →  OUT { note } | CONFLICT
 delete:  IN { type:"delete", noteId }  →  OUT { photoId, newNoteCount }
-list:    IN { type:"list", page, pageSize, sortBy:"created_at"|"photo_shoot_time",
+list:    IN { type:"list", cursor:null|string, pageSize:20,
+              sortBy:"created_at"|"photo_shoot_time",
               sortOrder:"desc"|"asc" }
          →  OUT { list:[{_id,photo_id,thumbnail_url(临时),content,content_code_point_count,
-                        photo_shoot_time,created_at,updated_at}], total, hasMore }
+                        photo_shoot_time,created_at,updated_at}], nextCursor,hasMore,total? }
          实现：查询 notes → 收集 photo_file_id → 批量 getTempFileURL() 生成 thumbnail_url
 ```
 
 #### upload 云函数
 
 ```
-confirm: IN { type:"confirm", fileId, size, width, height, format,
-              shootTime, timeSource, taskId }  →  OUT { photo:{ _id:photoId,... } }
-         幂等：taskId 已存在时直接返回已有记录
+prepare: IN { type:"prepare", taskId }
+         → OUT { attemptId,cloudPath,expiresAt,photoId? }
+confirm: IN { type:"confirm", attemptId,fileId,shootTime,timeSource }
+         → OUT { photo:{ _id:photoId,... },duplicated }
+cancel:  IN { type:"cancel", attemptIds:[1..20] }
+         → OUT { results:[{attemptId,status,photoId?}] }
 ```
+
+- `prepare` 要求 ACTIVE 用户；同一 `_openid + taskId` 重放返回原 attempt，已 CONFIRMED 时同时返回 `photoId`，CANCELED/EXPIRED 不得复活。
+- `confirm` 不接收或信任客户端 `size/width/height/format`。SPACE_EXCEEDED 时 attempt 保持 PREPARED，可在 24h 内释放空间后重试。
+- cancel 与 confirm 以服务端最终事务提交顺序线性化：cancel 先提交则 confirm 返回 CANCELED；confirm 先提交则 cancel 返回 CONFIRMED 与原 `photoId`。
 
 PG-003 只使用 `confirm` 返回的 `photoId` 构造批量标签请求，不使用本地任务索引、临时路径或未入库任务。
 
@@ -840,23 +948,30 @@ getDeletionStatus:  IN { type:"getDeletionStatus" }  →  OUT { status, retryCou
 ```
 客户端
   选择图片 → 读 EXIF → 校验 → Canvas 压缩
-  wx.cloud.uploadFile()  →  云存储返回 fileID
-  callFunction('upload', { type:'confirm', fileId, size, ..., taskId })
+  upload/prepare(taskId) → attemptId + pending cloudPath
+  wx.cloud.uploadFile(pending cloudPath) → 云存储返回 fileID
+  callFunction('upload', { type:'confirm', attemptId,fileId,shootTime,timeSource })
     云函数 upload:
-      校验 _openid
-      检查空间 used_bytes + size ≤ limit_bytes
-      幂等检查 taskId
+      取得短 confirm 租约
+      校验 _openid、环境、fileID 路径与 attempt
+      下载并解析真实 size/format/width/height
       ↓
       内容安全审核（§5.6）:
         cloud.downloadFile({ fileID }) → 二次压缩至 ≤1MB
         cloud.openapi.security.imgSecCheck()
         ├─ 通过 → 继续
-        └─ 不通过 → 删除云存储文件，返回 CONTENT_REVIEW_FAILED
+        └─ 不通过 → 清理对象，返回 CONTENT_REVIEW_FAILED
       ↓
-      photos.insert({...tag_count:0})
-      users.update({ $inc: { used_bytes: size } })
+      提升已验证 buffer 到 photos/active/
+      最终短事务:
+        再校验 attempt=PREPARED、租约、user=ACTIVE 和配额
+        photos.insert({status:ACTIVE,...verified_meta})
+        users.used_bytes += verified.file_size
+        attempt → CONFIRMED + photo_id
       ← 返回含 photoId 的 photo 记录
 ```
+
+active 提升后事务失败时，把 `promoted_file_id/verified_meta` 保存在 attempt 供重试或补偿清理，不增加空间。租约期间 cancel 仍可先提交；最终事务发现 CANCELED 后终止并清理孤立 active 对象。
 
 ### 7.3 备注冲突处理
 
@@ -877,7 +992,7 @@ getDeletionStatus:  IN { type:"getDeletionStatus" }  →  OUT { status, retryCou
 
 ```text
 PG-002 onLoad
-  ├─ photo/list { scope:"ALL", page:1, pageSize:20 }
+  ├─ photo/list { scope:"ALL", cursor:null, pageSize:20 }
   │    └─ 成功即展示全部图片；不等待标签接口
   └─ tag/list { mode:"QUICK" }
        ├─ 成功：依据 total=0 / 1～5 / 6～100 渲染自适应入口
@@ -889,20 +1004,20 @@ PG-002 onLoad
 ### 7.5 单标签与未分类筛选
 
 ```text
-点击筛选项 → 更新选中态 → 清空图片分页 → photo/list
+点击筛选项 → 更新选中态 → 清空 nextCursor → photo/list
   ALL:
-    photos where {_openid} order by upload_time desc
+    photos where {_openid,status:ACTIVE} order by upload_time desc,_id desc
   UNCATEGORIZED:
-    photos where {_openid, tag_count:0} order by upload_time desc
+    photos where {_openid,status:ACTIVE,tag_count:0} order by upload_time desc,_id desc
   TAG:
     1. 校验 tag {_id:tagId,_openid}
-    2. photo_tags 按 tag_id + photo_upload_time 分页取 photoId
-    3. 批量读取本人 photos，按关联页顺序恢复卡片列表
+    2. photo_tags 按 photo_upload_time desc,_id desc 使用 cursor 取候选
+    3. 批量读取本人 ACTIVE photos，按关联顺序恢复；跳过失效项并继续扫描
     4. 更新 tag.last_used_at；更新成功后才返回筛选成功
 ```
 
 - `TAG` 不存在或不属于本人时不返回任何图片信息；前端收到 `TAG_NOT_FOUND` 后刷新快捷区并切换到【全部】。
-- 筛选失败保留当前选中项并显示列表错误态；重试复用相同 `scope/tagId/page`。
+- 筛选失败保留当前选中项并显示列表错误态；重试复用相同 `scope/tagId/cursor`。
 - 标签结果分页不在客户端对全部图片做筛选，也不在图片卡片中返回标签名称。
 
 ### 7.6 单图增量标签保存
@@ -963,6 +1078,7 @@ PG-009 二次确认（显示服务端 photo_count）
 | 数据库索引 | 所有查询场景均有复合索引覆盖 |
 | 标签并行加载 | PG-002 的 ALL 图片和 QUICK 标签并行请求，标签故障不增加核心图片流等待时间 |
 | 标签分页 | 先从 `photo_tags` 索引取得 20 个有序图片 ID，再批量取卡片字段并恢复顺序 |
+| Keyset cursor | 图片与备注使用“排序值 + `_id`”复合游标，不用 `page/skip`；并发新增/删除时避免重复和漏项 |
 | 未分类索引 | 使用 `photos.tag_count = 0` 及复合索引，避免全表反连接或前端本地筛选 |
 | 冗余字段 | `notes` 冗余图片摘要；`photo_tags` 冗余上传时间；标签/图片冗余关系计数 |
 | 原子更新 | `note_count`、`photo_count`、`tag_count` 只按实际关系差异原子增减 |
@@ -979,6 +1095,17 @@ PG-009 二次确认（显示服务端 photo_count）
 | 批量标签保存 | P95 ≤ 2s | 20 张图片 × 5 个标签 |
 
 标签能力不得使图片列表首屏 P95 ≤ 3s 的基线目标失效。
+
+### 8.2 Keyset Cursor 规则
+
+统一响应为 `{ list, nextCursor, hasMore, total? }`。cursor 是 Base64URL 编码的版本化 JSON，至少包含 `v/resource/scope/tagId/sortBy/sortOrder/lastValue/lastId`；它只是传输编码，不是可信签名。
+
+- 服务端校验 cursor 与本次资源、筛选和排序参数完全一致，否则返回 `INVALID_CURSOR`。
+- 所有查询始终先限制 `_openid` 与业务状态；篡改 cursor 不能扩大数据范围。
+- 图片下一页条件为 `upload_time < lastValue OR (upload_time == lastValue AND _id < lastId)`。
+- 备注根据 `created_at|photo_shoot_time` 与升降序使用同向 `_id` 第二排序键，只返回仍关联本人 ACTIVE photo 的记录。
+- 每次最多 20 条，可内部读取 `pageSize + 1` 判断 `hasMore`；`total` 不参与翻页，不允许据此计算 offset。
+- 分页会话开始后排在当前 cursor 之前的新数据通过下拉刷新获取；固定数据集必须无重复、无遗漏。
 
 ---
 
@@ -1009,17 +1136,23 @@ function countCodePoints(str) {
 
 ### 10.2 上传幂等性
 
-```javascript
-// 客户端生成: taskId = `${batchId}_${fileIndex}`
-// 服务端: 检查 taskId 是否已存在 → 存在则直接返回已有记录
-```
+客户端生成 `taskId = ${batchId}_${fileIndex}`。`upload_attempts(_openid,task_id)`、`photos(_openid,task_id)` 和 `photos(_openid,upload_attempt_id)` 均使用唯一索引；“先查后写”只用于快速路径，唯一索引才是并发最终防线。唯一冲突后按本人 taskId 读取原 photo 并返回同一 `photoId`，不能重复计费。
 
 ### 10.3 空间用量原子更新
 
-```javascript
-// 使用 $inc 而非 read-modify-write，防止并发丢失
-await db.collection('users').doc(openid).update({ data: { used_bytes: _.inc(size) } })
+```text
+最终短事务：
+  读取本人 PREPARED attempt（租约 token 匹配）
+  读取本人 ACTIVE user
+  if used_bytes + verified.file_size > limit_bytes:
+    不写入，返回 SPACE_EXCEEDED
+  else:
+    创建 ACTIVE photo
+    users.used_bytes += verified.file_size
+    attempt → CONFIRMED
 ```
+
+删除空间只在 `PHOTO_FINALIZE` 事务中与 photo 删除、task COMPLETED 同时扣减一次。任何路径都不得把 photo 写入、空间更新或 attempt 状态拆成独立提交。
 
 ### 10.4 标签名称规范化
 
@@ -1072,7 +1205,20 @@ toDelete = currentTagIds - desired
 { event, result, errorCode?, durationMs, countBucket?, requestIdHash?, timestamp }
 ```
 
-至少覆盖标签创建/重命名/删除、单图增删、批量入口曝光/使用/跳过、三类筛选、上限触发、级联清理及计数校正。禁止记录标签名称、原始标签 ID、图片/备注内容、完整 fileID、私有 URL 或可逆用户内容映射。
+至少覆盖标签创建/重命名/删除、单图增删、批量入口曝光/使用/跳过、三类筛选、上传 attempt 状态、confirm 租约、文件校验、删除阶段、上限触发、级联清理及计数校正。禁止记录原始 OPENID、原始资源 ID、标签名称、图片/备注内容、完整 fileID、私有 URL 或可逆用户内容映射。需要关联安全事件时使用仅服务端持有密钥的带盐 HMAC 摘要。
+
+### 10.8 上传与删除状态机
+
+```text
+PREPARED ──confirm 最终事务──→ CONFIRMED
+    ├──────cancel 事务───────→ CANCELED
+    └──────到期清理──────────→ EXPIRED
+
+PHOTO ACTIVE ──delete 事务──→ DELETING
+删除任务 PENDING → PROCESSING ↔ RETRYING → COMPLETED
+```
+
+confirm 与 cancel 以事务提交顺序决定结果，不以客户端点击时间判断。删除申请一旦提交不可撤销；后台失败只重试，不恢复图片可见性。
 
 ---
 
@@ -1081,31 +1227,42 @@ toDelete = currentTagIds - desired
 | 阶段 | 内容 | 交付物 |
 |---|---|---|
 | S1 基础设施 | 项目重构、页面路由、user 云函数、TDesign 引入构建 | 登录流程跑通 |
-| S2 上传核心 | photo(list/detail)、upload(confirm)、EXIF+压缩+上传队列；新图片初始化 `tag_count=0` | 单图上传成功并返回 photoId |
-| S3 图片浏览 | PG-002 瀑布流、PG-004 预览、photo(delete) | 图片浏览+删除 |
+| S2 上传核心 | `upload_attempts`、prepare/confirm/cancel、可信文件提升、配额事务、EXIF+压缩+上传队列 | 并发上传幂等且不超配额 |
+| S3 图片浏览 | PG-002 cursor 瀑布流、PG-004 预览、逻辑删除与状态查询、cleanup 分阶段处理 | 图片立即隐藏且删除可恢复推进 |
 | S4 标签基础 | `tags/photo_tags`、索引、规范化 helper、tag CRUD、PG-009 | 标签隔离、唯一性和维护流程 |
 | S5 标签关联 | 单图增量事务、TagPicker、PhotoTagSection、上传后批量关联 | F-018/F-019 跑通 |
-| S6 标签筛选 | ALL/UNCATEGORIZED/TAG 查询、TagFilterBar、会话恢复、计数校正 | F-016 与三类分页跑通 |
-| S7 备注核心 | note CRUD、PG-005 编辑器、PG-006 排序与反向定位 | 备注双向浏览 |
+| S6 标签筛选 | ALL/UNCATEGORIZED/TAG cursor 查询、TagFilterBar、会话恢复、计数校正 | F-016 与三类稳定分页跑通 |
+| S7 备注核心 | note CRUD、cursor 列表、PG-005 编辑器、PG-006 排序与反向定位 | 备注双向浏览 |
 | S8 设置与空间 | 空间查询、PG-007、空间预警 | 数据管理 |
 | S9 注销与清理 | account、PG-008、关联清理、计数校正和失败重试 | 合规完成 |
 | S10 打磨发布 | 骨架屏、空/错态、埋点、性能/安全/真机测试 | 发布就绪 |
 
 ---
 
-## 12. 待确认事项
+## 12. 待确认事项与发布约束
 
 1. **云开发环境 ID**：环境归属与配额
 2. **Node.js 运行时版本**：云函数建议 Node.js 18
 3. **TDesign 版本锁定**：建议 `~` 锁定 Minor 版本
 4. **图片存储地域**：COS 存储桶地域选择
-5. **定时触发器配额**：确认免费额度是否足够每日一次
+5. **定时触发器配额**：确认是否支持删除任务至少每 5 分钟推进，并保留每日全量补偿
+6. **CloudBase 能力验收**：事务冲突重试、复合唯一索引、升降序索引反向扫描、对象路径权限和服务端提升能力
 
 标签架构的三项原待确认技术决策已锁定：
 
 - 计数一致性：关系事务增量维护 + `cleanup` 聚合校正。
 - 并发唯一性：用户+规范化名称、用户+图片+标签唯一索引。
 - 未分类性能：`photos.tag_count=0` 复合索引查询。
+
+### 12.1 发布顺序与回滚约束
+
+1. 在开发环境正反向验证事务、唯一索引、cursor 索引以及 pending/active 存储权限。
+2. 创建 `upload_attempts` 和全部新索引，回填既有 photo 状态字段。
+3. 先部署兼容新 schema 但未开放入口的云函数，再部署使用 prepare/confirm/cancel 与 cursor 的客户端。
+4. 同时启用 `UPLOAD_ATTEMPT_REQUIRED`、`CURSOR_PAGINATION_REQUIRED`、`ASYNC_PHOTO_DELETE_ENABLED`、`PUBLIC_RESOURCE_ERROR_MASKING`，停止旧 `confirm(fileId,size,...)` 和 `page/skip` 协议。
+5. 上传协议和 cursor 必须客户端、服务端整版本发布或回滚；不得混用。新上传协议启用后不得回滚到信任客户端元数据的 confirm。
+6. 异步删除启用后，已存在的 DELETING photo 和任务必须继续由 cleanup 推进；任何 UI 回滚都不得让图片重新可见。
+7. 事务或唯一索引验收失败即停止发布，不能通过移除一致性防线绕过。
 
 ---
 
@@ -1118,23 +1275,29 @@ toDelete = currentTagIds - desired
 | 身份隔离 | 不同账号数据互不可见 |
 | 图片压缩质量 | 多种样张真机测试 2560px 压缩效果 |
 | 上传并发 ≤3 | 20 张批量上传抓包观察 |
+| 配额并发原子性 | 剩余空间仅容纳 1 张时并发 confirm 3 张，仅 1 张成功；photo、空间、attempt 无半提交 |
+| 文件可信性 | 少报大小、伪造格式/尺寸、错误环境或路径、伪造扩展名均被服务端拒绝或按真实元数据入库 |
+| 上传幂等与取消 | 10 个并发 confirm 只创建一条 photo；cancel/confirm 两种提交顺序符合线性化结果；租约崩溃后可恢复 |
 | 备注冲突 | 双设备并发修改验证乐观锁 |
 | 缩略图性能 | 网络抓包确认仅加载 200px thumbnail_url |
 | 快捷入口边界 | 验证 0/1/5/6/100 个标签对应新建/管理/更多形态 |
 | 标签名称 | 验证 0/1/12/13 code point、Emoji、Unicode 空白、控制字符、NFC、拉丁大小写、保留名称 |
 | 标签隔离 | 用户 B 使用用户 A 的 tagId/photoId 调用全部标签接口均被拒绝且不泄露信息 |
-| 三类图片分页 | ALL/UNCATEGORIZED/TAG 每页 20 张，上传时间降序，无重复、遗漏或前端本地筛选 |
+| 三类图片分页 | ALL/UNCATEGORIZED/TAG 每页 20 张，复合 cursor 排序；相同时间戳及并发增删下无重复遗漏，不使用 `.skip()` |
+| 备注 cursor | 四种排序方向均以 `_id` 稳定打破并列，错误或篡改 cursor 返回 `INVALID_CURSOR` 且不能越权 |
 | 并发唯一性 | 并发创建规范化同名标签只能成功一个 |
 | 单图边界 | 验证 0～5 个标签、尝试第 6 个、移除最后标签后进入未分类 |
 | 关联幂等 | 重放单图与批量 requestId，关系及双方计数不重复 |
 | 批量部分结果 | 20×5、部分图片失效、部分图片超限时分别核对三类计数且成功图片不回滚 |
 | 标签删除 | 删除标签及关系但保留图片/备注，相关图片 tag_count 与未分类结果正确 |
-| 图片删除 | 删除图片、备注及关系，保留标签并正确递减 photo_count |
+| 图片删除 | 接受后所有读写路径立即隐藏；对象/备注/关系分阶段失败可续跑，finalize 重放不重复扣空间 |
 | 注销级联 | 标签及关系清理失败时保持 DELETING，重试完成后才解绑 |
 | 故障隔离 | tag/list 故障时 ALL 图片正常展示，选择层保存失败时保留未提交值 |
 | 标签性能 | QUICK ≤800ms、ALL 标签 ≤1s、筛选 ≤2s、单图 ≤1s、20×5 批量 ≤2s（P95） |
 | 日志隐私 | 抽查日志与埋点不含标签名称、原始标签 ID、用户内容和私有 URL |
-| 数据准备 | 开发/测试旧图片回填 tag_count=0 后再建立未分类索引 |
+| 存在性保护 | 本人、他人、随机、DELETING/已删除资源的外部响应不泄露归属和存在性，公共接口无 `TAG_ACCESS_DENIED` |
+| 权限规则 | 7 个集合客户端均 DENY；pending 正向上传可用，active 的客户端读写删反向测试均被拒绝 |
+| 数据准备 | 开发/测试旧图片回填 `tag_count=0,status=ACTIVE,updated_at` 后再建立新索引 |
 
 ### 13.1 标签需求追溯
 
@@ -1148,3 +1311,15 @@ toDelete = currentTagIds - desired
 | BR-052～BR-053、AC-066、AC-071 | 服务端权威刷新、标签失效回到全部、标签故障与全部图片隔离 |
 
 文档评审时按上表逐组核对 AC-044～AC-075；任一验收项缺少明确接口、状态处理或验证方法时，不进入实现阶段。
+
+### 13.2 P0 修复追溯
+
+| P0 | 主架构落点 |
+|---|---|
+| P0-01 配额原子性 | §2.1、§4.3 事务边界、§7.2、§10.3、§13 配额并发验收 |
+| P0-02 文件可信性 | §3.7、§4.4、§5.2/5.6、§6.3 upload、§13 文件可信性验收 |
+| P0-03 上传幂等 | `upload_attempts/photos` 唯一索引、§6.3 upload、§10.2 |
+| P0-04 取消竞态 | §3.8、§6.3 upload、§7.2、§10.8 |
+| P0-05 图片删除 | `photos/deletion_tasks` 模型、§4.3 业务隔离、§6.3 photo、§10.8 |
+| P0-06 分页稳定性 | cursor 索引、§6.3 photo/note、§8.2、§13 分页验收 |
+| P0-07 存在性泄露 | §5.1/5.2、§6.2 统一错误码、§13 存在性保护验收 |

@@ -1,200 +1,274 @@
-/**
- * 数据库初始化脚本 — 图片笔记小程序 V1.0.0
- *
- * 用途：创建集合、创建索引、回填数据
- * 要求：可重复执行（幂等）
- *
- * 使用方式：
- *   1. 在腾讯云控制台获取 CAM 子账号的 SecretId 和 SecretKey
- *      https://console.cloud.tencent.com/cam/capi
- *   2. 设置环境变量：
- *      export CLOUDBASE_SECRET_ID=AKIDxxxxx
- *      export CLOUDBASE_SECRET_KEY=xxxxx
- *      export CLOUDBASE_ENV_ID=cloud1-d0gsee3m13c2b446c
- *   3. npm install @cloudbase/node-sdk
- *   4. node scripts/db-init.js
- *
- * 最小权限 CAM 策略：
- *   - cloudbase:CreateCollection
- *   - cloudbase:UpdateIndex
- *   - cloudbase:DescribeDatabase
- */
+'use strict'
 
-const cloudbase = require("@cloudbase/node-sdk");
+const crypto = require('crypto')
+const { COLLECTIONS, flattenIndexes } = require('./backend-schema')
 
-// ============================================================
-// 配置
-// ============================================================
+const SAFE_ENV_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/u
+const ALREADY_EXISTS_CODES = new Set([
+  'DATABASE_COLLECTION_EXIST',
+  'INDEX_ALREADY_EXISTS',
+  'ResourceConflict',
+  'ResourceInUse',
+])
 
-const ENV_ID = process.env.CLOUDBASE_ENV_ID || "cloud1-d0gsee3m13c2b446c";
-const SECRET_ID = process.env.CLOUDBASE_SECRET_ID;
-const SECRET_KEY = process.env.CLOUDBASE_SECRET_KEY;
-
-if (!SECRET_ID || !SECRET_KEY) {
-  console.error("❌ 请设置环境变量 CLOUDBASE_SECRET_ID 和 CLOUDBASE_SECRET_KEY");
-  console.error("   获取地址：https://console.cloud.tencent.com/cam/capi");
-  process.exit(1);
+class CliError extends Error {
+  constructor(code) {
+    super(code)
+    this.code = code
+  }
 }
 
-const app = cloudbase.init({
-  env: ENV_ID,
-  secretId: SECRET_ID,
-  secretKey: SECRET_KEY,
-});
+function parseArgs(argv) {
+  const options = { mode: 'dry-run', envId: null, help: false }
+  let explicitMode = null
 
-const db = app.database();
-
-// ============================================================
-// 集合定义
-// ============================================================
-
-const COLLECTIONS = {
-  users: {
-    description: "用户",
-    // 不需要 _openid 索引：CloudBase 内置索引 + _id = _openid 主键唯一
-    indexes: [
-      { name: "status_idx", keys: { status: 1 } },
-    ],
-  },
-
-  photos: {
-    description: "图片",
-    indexes: [
-      { name: "list_idx", keys: { _openid: 1, upload_time: -1 } },
-      {
-        name: "uncategorized_idx",
-        keys: { _openid: 1, tag_count: 1, upload_time: -1 },
-      },
-      { name: "shoot_time_idx", keys: { _openid: 1, shoot_time: -1 } },
-    ],
-    preInit: async () => {
-      // 回填：已有图片如果缺少 tag_count 字段，设为 0
-      const _ = db.command;
-      const result = await db
-        .collection("photos")
-        .where({ tag_count: _.exists(false) })
-        .update({ tag_count: 0 });
-      console.log(`  ↳ tag_count 回填: ${result.updated} 条`);
-    },
-  },
-
-  notes: {
-    description: "备注",
-    indexes: [
-      { name: "photo_idx", keys: { photo_id: 1 } },
-      { name: "created_at_idx", keys: { _openid: 1, created_at: -1 } },
-      { name: "shoot_time_idx", keys: { _openid: 1, photo_shoot_time: -1 } },
-    ],
-  },
-
-  tags: {
-    description: "标签",
-    indexes: [
-      {
-        name: "name_unique",
-        keys: { _openid: 1, normalized_name: 1 },
-        unique: true,
-      },
-      {
-        name: "list_idx",
-        keys: {
-          _openid: 1,
-          last_used_at: -1,
-          updated_at: -1,
-          created_at: -1,
-        },
-      },
-    ],
-  },
-
-  photo_tags: {
-    description: "图片-标签关联",
-    indexes: [
-      {
-        name: "relation_unique",
-        keys: { _openid: 1, photo_id: 1, tag_id: 1 },
-        unique: true,
-      },
-      {
-        name: "tag_filter_idx",
-        keys: { _openid: 1, tag_id: 1, photo_upload_time: -1 },
-      },
-      { name: "photo_relation_idx", keys: { _openid: 1, photo_id: 1 } },
-    ],
-  },
-
-  deletion_tasks: {
-    description: "删除任务",
-    indexes: [
-      { name: "user_status_idx", keys: { _openid: 1, status: 1 } },
-      { name: "retry_idx", keys: { status: 1, retry_count: 1 } },
-    ],
-  },
-};
-
-// ============================================================
-// 主流程
-// ============================================================
-
-async function main() {
-  console.log(`\n🔧 初始化云开发环境: ${ENV_ID}\n`);
-
-  const results = { created: [], indexes: { ok: [], skip: [], fail: [] } };
-
-  for (const [name, config] of Object.entries(COLLECTIONS)) {
-    console.log(`\n📦 ${name} (${config.description})`);
-
-    // ---- 前置初始化 ----
-    if (config.preInit) {
-      await config.preInit();
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--help' || arg === '-h') {
+      options.help = true
+    } else if (arg === '--dry-run' || arg === '--apply') {
+      const mode = arg === '--apply' ? 'apply' : 'dry-run'
+      if (explicitMode && explicitMode !== mode) {
+        throw new CliError('CONFLICTING_MODES')
+      }
+      explicitMode = mode
+      options.mode = mode
+    } else if (arg === '--env') {
+      index += 1
+      options.envId = argv[index] || null
+    } else {
+      throw new CliError('UNKNOWN_ARGUMENT')
     }
+  }
 
-    // ---- 创建索引 ----
-    for (const idx of config.indexes) {
-      const label = `${name}.${idx.name}: ${JSON.stringify(idx.keys)}${idx.unique ? " UNIQUE" : ""}`;
+  if (!options.help && !SAFE_ENV_PATTERN.test(options.envId || '')) {
+    throw new CliError('ENV_REQUIRED')
+  }
+  return options
+}
+
+function environmentHash(envId) {
+  return crypto.createHash('sha256').update(envId).digest('hex').slice(0, 12)
+}
+
+function buildPlan(options, now = new Date()) {
+  return {
+    mode: options.mode,
+    environmentHash: environmentHash(options.envId),
+    collections: COLLECTIONS.map((collection) => collection.name),
+    indexes: flattenIndexes(),
+    backfill: {
+      collection: 'photos',
+      missingOnly: true,
+      fields: {
+        status: 'ACTIVE',
+        updated_at: now.toISOString(),
+        tag_count: 0,
+      },
+    },
+  }
+}
+
+function isAlreadyExists(error) {
+  return Boolean(error && ALREADY_EXISTS_CODES.has(error.code))
+}
+
+function indexMatchesCloud(index, cloudIndex) {
+  if (!cloudIndex || cloudIndex.Name !== index.name) return false
+  const cloudUnique =
+    cloudIndex.Unique === true || String(cloudIndex.Unique).toLowerCase() === 'true'
+  if (cloudUnique !== Boolean(index.unique)) return false
+  const cloudKeys = Array.isArray(cloudIndex.Keys) ? cloudIndex.Keys : []
+  const expectedKeys = Object.entries(index.keys)
+  if (cloudKeys.length !== expectedKeys.length) return false
+  return expectedKeys.every(([name, direction], position) => {
+    const actual = cloudKeys[position]
+    return actual &&
+      actual.Name === name &&
+      String(actual.Direction) === String(direction)
+  })
+}
+
+async function applyPlan(adapter, options = {}) {
+  const now = options.now || new Date()
+  const summary = {
+    collectionsCreated: 0,
+    collectionsExisting: 0,
+    indexesCreated: 0,
+    indexesExisting: 0,
+    backfillMatched: 0,
+    backfillUpdated: 0,
+    backfillRemaining: 0,
+  }
+
+  for (const collection of COLLECTIONS) {
+    try {
+      await adapter.createCollection(collection.name)
+      summary.collectionsCreated += 1
+    } catch (error) {
+      if (!isAlreadyExists(error)) throw new CliError('COLLECTION_CREATE_FAILED')
+      summary.collectionsExisting += 1
+    }
+  }
+
+  const photos = COLLECTIONS.find((item) => item.name === 'photos')
+  for (const item of photos.backfill) {
+    const value = item.value === 'NOW' ? now : item.value
+    const result = await adapter.backfillMissing('photos', item.field, value)
+    summary.backfillMatched += Number(result.matched || 0)
+    summary.backfillUpdated += Number(result.updated || 0)
+  }
+
+  for (const collection of COLLECTIONS) {
+    for (const index of collection.indexes) {
       try {
-        await db.collection(name).createIndex(idx.keys, {
-          name: idx.name,
-          unique: idx.unique || false,
-        });
-        console.log(`  ✅ ${label}`);
-        results.indexes.ok.push(label);
-      } catch (err) {
-        // IndexAlreadyExists 视为幂等成功
-        if (
-          err.message?.includes("already exists") ||
-          err.code === "ResourceConflict"
-        ) {
-          console.log(`  ⏭️  ${label}（已存在）`);
-          results.indexes.skip.push(label);
-        } else {
-          console.error(`  ❌ ${label}\n     ${err.message || err}`);
-          results.indexes.fail.push(label);
-        }
+        await adapter.createIndex(collection.name, index)
+        summary.indexesCreated += 1
+      } catch (error) {
+        if (!isAlreadyExists(error)) throw new CliError('INDEX_CREATE_FAILED')
+        summary.indexesExisting += 1
       }
     }
   }
 
-  // ---- 报告 ----
-  console.log("\n" + "=".repeat(60));
-  console.log("初始化报告");
-  console.log("=".repeat(60));
-  console.log(`✅ 索引创建/已存在: ${results.indexes.ok.length + results.indexes.skip.length}`);
-  console.log(`❌ 索引创建失败:   ${results.indexes.fail.length}`);
-
-  if (results.indexes.fail.length > 0) {
-    console.log("\n失败清单：");
-    results.indexes.fail.forEach((f) => console.log(`  - ${f}`));
+  for (const item of photos.backfill) {
+    summary.backfillRemaining += await adapter.countMissing(
+      'photos',
+      item.field,
+    )
   }
-
-  console.log("\n⚠️  脚本只创建索引，不配置集合权限。");
-  console.log("   请在云开发控制台 → 数据库 → 每个集合 → 权限设置，按以下配置：");
-  console.log("   tags、photo_tags → 自定义规则 { read: false, write: false }");
-  console.log("   其他四个集合 → 仅创建者可读写");
-  console.log("   详见: docs/DATABASE-SETUP-CHECKLIST.md §2\n");
+  if (summary.backfillRemaining !== 0) {
+    throw new CliError('BACKFILL_VERIFICATION_FAILED')
+  }
+  return summary
 }
 
-main().catch((err) => {
-  console.error("\n❌ 初始化异常:", err.message || err);
-  process.exit(2);
-});
+function createCloudBaseAdapter(envId, env = process.env) {
+  if (!env.CLOUDBASE_SECRET_ID || !env.CLOUDBASE_SECRET_KEY) {
+    throw new CliError('CREDENTIALS_REQUIRED')
+  }
+
+  let CloudBase
+  let cloudbase
+  try {
+    CloudBase = require('@cloudbase/manager-node')
+    cloudbase = require('@cloudbase/node-sdk')
+  } catch (_) {
+    throw new CliError('CLOUDBASE_SDK_REQUIRED')
+  }
+
+  const manager = new CloudBase({
+    envId,
+    secretId: env.CLOUDBASE_SECRET_ID,
+    secretKey: env.CLOUDBASE_SECRET_KEY,
+  })
+  const app = cloudbase.init({
+    env: envId,
+    secretId: env.CLOUDBASE_SECRET_ID,
+    secretKey: env.CLOUDBASE_SECRET_KEY,
+  })
+  const db = app.database()
+  const command = db.command
+
+  return {
+    async createCollection(name) {
+      const result = await manager.database.checkCollectionExists(name)
+      if (result.Exists) {
+        throw Object.assign(new Error(), { code: 'ResourceConflict' })
+      }
+      return manager.database.createCollection(name)
+    },
+    async createIndex(collection, index) {
+      const description = await manager.database.describeCollection(collection)
+      const existing = (description.Indexes || []).find(
+        (item) => item.Name === index.name,
+      )
+      if (existing && indexMatchesCloud(index, existing)) {
+        throw Object.assign(new Error(), { code: 'INDEX_ALREADY_EXISTS' })
+      }
+      if (existing) throw new CliError('INDEX_DEFINITION_MISMATCH')
+      return manager.database.updateCollection(collection, {
+        CreateIndexes: [{
+          IndexName: index.name,
+          MgoKeySchema: {
+            MgoIsUnique: Boolean(index.unique),
+            MgoIndexKeys: Object.entries(index.keys).map(
+              ([name, direction]) => ({
+                Name: name,
+                Direction: String(direction),
+              }),
+            ),
+          },
+        }],
+      })
+    },
+    async backfillMissing(collection, field, value) {
+      const query = db
+        .collection(collection)
+        .where({ [field]: command.exists(false) })
+      const before = await query.count()
+      if (!before.total) return { matched: 0, updated: 0 }
+      const result = await query.update({ [field]: value })
+      return {
+        matched: before.total,
+        updated: Number(result.updated || 0),
+      }
+    },
+    async countMissing(collection, field) {
+      const result = await db
+        .collection(collection)
+        .where({ [field]: command.exists(false) })
+        .count()
+      return Number(result.total || 0)
+    },
+  }
+}
+
+function printUsage(write) {
+  write(
+    'Usage: node scripts/db-init.js [--dry-run|--apply] --env <environment-id>\n',
+  )
+}
+
+async function main(argv = process.argv.slice(2), env = process.env) {
+  const options = parseArgs(argv)
+  if (options.help) {
+    printUsage(process.stdout.write.bind(process.stdout))
+    return
+  }
+
+  const plan = buildPlan(options)
+  if (options.mode === 'dry-run') {
+    process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`)
+    return plan
+  }
+
+  const adapter = createCloudBaseAdapter(options.envId, env)
+  const summary = await applyPlan(adapter)
+  process.stdout.write(
+    `${JSON.stringify({
+      mode: options.mode,
+      environmentHash: plan.environmentHash,
+      summary,
+    }, null, 2)}\n`,
+  )
+  return summary
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    const safeCode = error instanceof CliError ? error.code : 'UNEXPECTED_FAILURE'
+    process.stderr.write(`Database initialization failed: ${safeCode}\n`)
+    process.exitCode = 1
+  })
+}
+
+module.exports = {
+  CliError,
+  applyPlan,
+  buildPlan,
+  createCloudBaseAdapter,
+  indexMatchesCloud,
+  main,
+  parseArgs,
+}

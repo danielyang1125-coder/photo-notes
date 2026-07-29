@@ -2,8 +2,9 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
-
-function getOpenId() { return cloud.getWXContext().OPENID }
+const { createBusinessMain } = require('./lib/shared/router')
+const { createSecurityLogger } = require('./lib/shared/security-log')
+const logger = createSecurityLogger()
 
 // ============================================================
 // requestDeletion — 申请注销
@@ -64,18 +65,14 @@ async function handleGetDeletionStatus(openid) {
 }
 
 // ============================================================
-exports.main = async (event, context) => {
-  const openid = getOpenId()
-  if (!openid) return { code: 'AUTH_FAILED', message: '身份验证失败' }
-  try {
-    switch (event.type) {
-      case 'requestDeletion':    return handleRequestDeletion(openid, event)
-      case 'getDeletionStatus':  return handleGetDeletionStatus(openid)
-      default: return { code: 'UNKNOWN_TYPE', message: '支持: requestDeletion | getDeletionStatus' }
-    }
-  } catch (err) {
-    if (err.code && err.code !== 'INTERNAL_ERROR') return { code: err.code, message: err.message }
-    console.error('[account]', err)
-    return { code: err.code || 'INTERNAL_ERROR', message: err.message || '服务异常' }
-  }
-}
+exports.main = createBusinessMain({
+  domain: 'account',
+  cloud,
+  db,
+  logger,
+  activeGuard: false,
+  handlers: {
+    requestDeletion: ({ openid, event }) => handleRequestDeletion(openid, event),
+    getDeletionStatus: ({ openid }) => handleGetDeletionStatus(openid),
+  },
+})

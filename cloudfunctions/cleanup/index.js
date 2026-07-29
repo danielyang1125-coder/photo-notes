@@ -2,54 +2,70 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const _ = db.command
+const { createTimerMain } = require('./lib/shared/router')
+const { createSecurityLogger } = require('./lib/shared/security-log')
+const logger = createSecurityLogger()
 
 const BATCH_SIZE = 100
 
 // ============================================================
 // 定时触发器入口：每日 03:00 执行
 // ============================================================
-exports.main = async (event, context) => {
-  console.log('[cleanup] 开始每日清理, trigger:', event.TriggerName || 'manual')
-
-  let summary = {}
+async function handleCleanup() {
+  const summary = {}
 
   // 1. 重试失败的 PHOTO_DELETE 任务
   try {
     const r = await retryFailedPhotoDeletes()
     summary.retryPhotoDeletes = r
-  } catch (e) {
-    console.error('[cleanup] retryPhotoDeletes:', e.message)
-    summary.retryPhotoDeletes = { error: e.message }
+  } catch (_) {
+    logger.error({
+      event: 'cleanup.retry_photo_deletes',
+      result: 'FAILURE',
+      safeErrorCode: 'INTERNAL_ERROR',
+    })
+    summary.retryPhotoDeletes = { errorCode: 'INTERNAL_ERROR' }
   }
 
   // 2. 扫描孤立 photo_tags（图片已删但关联还在）
   try {
     const r = await cleanOrphanRelations()
     summary.orphanRelations = r
-  } catch (e) {
-    console.error('[cleanup] orphanRelations:', e.message)
-    summary.orphanRelations = { error: e.message }
+  } catch (_) {
+    logger.error({
+      event: 'cleanup.orphan_relations',
+      result: 'FAILURE',
+      safeErrorCode: 'INTERNAL_ERROR',
+    })
+    summary.orphanRelations = { errorCode: 'INTERNAL_ERROR' }
   }
 
   // 3. 计数校正：tags.photo_count
   try {
     const r = await correctTagCounts()
     summary.tagCountCorrection = r
-  } catch (e) {
-    console.error('[cleanup] tagCountCorrection:', e.message)
-    summary.tagCountCorrection = { error: e.message }
+  } catch (_) {
+    logger.error({
+      event: 'cleanup.tag_count_correction',
+      result: 'FAILURE',
+      safeErrorCode: 'INTERNAL_ERROR',
+    })
+    summary.tagCountCorrection = { errorCode: 'INTERNAL_ERROR' }
   }
 
   // 4. 计数校正：photos.tag_count
   try {
     const r = await correctPhotoTagCounts()
     summary.photoTagCountCorrection = r
-  } catch (e) {
-    console.error('[cleanup] photoTagCountCorrection:', e.message)
-    summary.photoTagCountCorrection = { error: e.message }
+  } catch (_) {
+    logger.error({
+      event: 'cleanup.photo_tag_count_correction',
+      result: 'FAILURE',
+      safeErrorCode: 'INTERNAL_ERROR',
+    })
+    summary.photoTagCountCorrection = { errorCode: 'INTERNAL_ERROR' }
   }
 
-  console.log('[cleanup] 完成:', JSON.stringify(summary))
   return { code: 'SUCCESS', data: summary }
 }
 
@@ -98,12 +114,12 @@ async function retryFailedPhotoDeletes() {
         data: { status: 'COMPLETED', completed_at: db.serverDate() },
       })
       succeeded++
-    } catch (e) {
+    } catch (_) {
       await db.collection('deletion_tasks').doc(task._id).update({
         data: {
           status: 'FAILED',
           retry_count: _.inc(1),
-          last_error: e.message || '重试失败',
+          last_error: 'PHOTO_DELETE_RETRY_FAILED',
         },
       })
     }
@@ -174,3 +190,9 @@ async function correctPhotoTagCounts() {
   }
   return { scanned: (photos.data || []).length, corrected }
 }
+
+exports.main = createTimerMain({
+  domain: 'cleanup',
+  logger,
+  handler: () => handleCleanup(),
+})
