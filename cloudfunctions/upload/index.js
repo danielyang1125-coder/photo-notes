@@ -4,7 +4,9 @@ const db = cloud.database()
 const _ = db.command
 const { createBusinessMain } = require('./lib/shared/router')
 const { createSecurityLogger } = require('./lib/shared/security-log')
+const { createUploadAttemptHandlers } = require('./handlers')
 const logger = createSecurityLogger()
+const uploadAttemptHandlers = createUploadAttemptHandlers({ db })
 
 // ============================================================
 // confirm — 上传确认（幂等 + 内容审核 + 创建记录）
@@ -125,6 +127,10 @@ exports.main = createBusinessMain({
   db,
   logger,
   handlers: {
+    prepare: ({ openid, event }) =>
+      uploadAttemptHandlers.prepare(openid, event),
     confirm: ({ openid, event }) => handleConfirm(openid, event),
+    cancel: ({ openid, event }) =>
+      uploadAttemptHandlers.cancel(openid, event),
   },
 })

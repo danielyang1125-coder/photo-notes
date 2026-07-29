@@ -130,3 +130,52 @@ if (dev02Errors.length) {
 process.stdout.write(
   'DEV-02 audit manifest passed (USR-01..USR-06, COM-04..COM-07 static scope).\n',
 )
+
+const dev03Errors = []
+for (const relative of [
+  path.join('cloudfunctions', 'upload', 'handlers.js'),
+  path.join('test', 'backend', 'upload-attempt.test.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev03Errors.push(`artifact: ${relative}`)
+  }
+}
+
+const uploadEntry = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'upload', 'index.js'),
+  'utf8',
+)
+for (const route of ['prepare', 'cancel']) {
+  if (!uploadEntry.includes(`${route}: ({ openid, event })`)) {
+    dev03Errors.push(`upload route: ${route}`)
+  }
+}
+
+const uploadHandlers = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'upload', 'handlers.js'),
+  'utf8',
+)
+for (const evidence of [
+  'crypto.randomBytes(16)',
+  'uploads/pending/${normalizeRandomHex(randomHex)}.bin',
+  'ATTEMPT_TTL_MS = 24 * 60 * 60 * 1000',
+  "status: 'PREPARED'",
+  "status: 'CANCELED'",
+  'withTransactionRetry',
+  '_openid: openid',
+  'task_id: taskId',
+]) {
+  if (!uploadHandlers.includes(evidence)) {
+    dev03Errors.push(`upload attempt evidence: ${evidence}`)
+  }
+}
+
+if (dev03Errors.length) {
+  process.stderr.write(
+    `DEV-03 audit failed:\n${dev03Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-03 audit manifest passed (UPL-01..UPL-04, UPL-18..UPL-19 static scope).\n',
+)
