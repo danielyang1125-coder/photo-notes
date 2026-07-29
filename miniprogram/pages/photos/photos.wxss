@@ -4,21 +4,61 @@
   background:#fff; box-sizing:border-box;
 }
 .nav-inner {
-  height:44px; display:flex; align-items:center; justify-content:center;
-  position:relative;
+  display:flex; align-items:center; justify-content:center; position:relative;
 }
-.nav-title { font-size:17px; font-weight:600; color:#1D1D1D; }
+.nav-title { font-size:17px; font-weight:600; color:#1d1d1d; }
+.settings-button {
+  position:absolute;
+  top:50%;
+  display:flex;
+  width:64rpx;
+  height:64rpx;
+  align-items:center;
+  justify-content:center;
+  transform:translateY(-50%);
+  color:#333;
+}
 .content { min-height:100vh; }
-.waterfall-scroll { padding:0 16rpx; }
-.waterfall { display:flex; gap:16rpx; }
-.column { flex:1; display:flex; flex-direction:column; }
+.waterfall-scroll { box-sizing:border-box; padding:0 16rpx; }
+.waterfall { display:flex; gap:16rpx; padding-top:16rpx; }
+.column { flex:1; display:flex; flex-direction:column; min-width:0; }
 .load-more { text-align:center; padding:24rpx; font-size:24rpx; color:#999; }
 .load-more.end { color:#ccc; }
-.fab {
-  position:fixed; bottom:120rpx; right:32rpx; z-index:100;
-  width:96rpx; height:96rpx;
-  background:#0052D9; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  box-shadow:0 4px 16px rgba(0,82,217,0.4);
+.retry-more { color:#0052d9; }
+.filter-empty {
+  display:flex;
+  min-height:55vh;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:24rpx;
+  color:#999;
+}
+.empty-title { font-size:28rpx; }
+.fab-button {
+  position:fixed !important;
+  right:32rpx;
+  bottom:120rpx;
+  z-index:100;
+  width:96rpx !important;
+  height:96rpx !important;
+  min-width:96rpx !important;
+  padding:0 !important;
+  box-shadow:0 4px 16px rgba(0,82,217,.4);
 }
 .fab-icon { color:#fff; font-size:56rpx; line-height:1; font-weight:300; }
+.source-popup {
+  box-sizing:border-box;
+  padding:32rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  background:#f5f5f5;
+  border-radius:32rpx 32rpx 0 0;
+}
+.source-title { padding:0 0 24rpx; color:#999; font-size:26rpx; line-height:40rpx; text-align:center; }
+.source-options { overflow:hidden; background:#fff; border-radius:20rpx; }
+.source-option,.source-cancel {
+  display:flex; height:104rpx; align-items:center; justify-content:center; color:#222; font-size:32rpx;
+}
+.source-option + .source-option { border-top:1rpx solid #e7e7e7; }
+.source-icon { display:flex; width:48rpx; margin-right:8rpx; align-items:center; justify-content:center; }
+.source-cancel { margin-top:20rpx; background:#fff; border-radius:20rpx; }
+.source-option--active { background:#f2f2f2; }

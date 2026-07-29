@@ -18,6 +18,7 @@
       >未分类</t-tag>
       <t-tag
         wx:for="{{quickTags}}"
+        wx:if="{{tagState === 'ready'}}"
         wx:key="_id"
         theme="{{active === 'TAG' && activeTagId === item._id ? 'primary' : 'default'}}"
         variant="light"
@@ -25,10 +26,38 @@
         data-scope="TAG"
         data-tag-id="{{item._id}}"
         bind:tap="handleTap"
-      >{{item.name}}</t-tag>
+      ><text class="tag-name">{{item.name}}</text></t-tag>
+      <view wx:if="{{tagState === 'loading'}}" class="tag-skeleton">
+        <view class="skeleton-pill"></view>
+        <view class="skeleton-pill short"></view>
+      </view>
     </view>
   </scroll-view>
   <view class="filter-actions">
-    <text class="action" bind:tap="handleManage">管理</text>
+    <text
+      wx:if="{{tagState === 'ready' && total === 0}}"
+      class="action"
+      role="button"
+      aria-label="新建标签"
+      bind:tap="handleNewTag"
+    >＋新建标签</text>
+    <text
+      wx:elif="{{tagState === 'ready' && total <= 5}}"
+      class="action"
+      role="button"
+      aria-label="管理标签"
+      bind:tap="handleManage"
+    >管理</text>
+    <text
+      wx:elif="{{tagState === 'ready'}}"
+      class="action"
+      role="button"
+      aria-label="查看更多标签"
+      bind:tap="handleManage"
+    >更多</text>
+    <view wx:elif="{{tagState === 'error'}}" class="tag-error">
+      <text>标签加载失败</text>
+      <text class="retry" role="button" aria-label="重试加载标签" bind:tap="handleRetry">重试</text>
+    </view>
   </view>
 </view>

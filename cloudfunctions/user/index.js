@@ -90,6 +90,28 @@ async function handleGetStatus(openid) {
   }
 }
 
+async function handleGetSpaceUsage(openid) {
+  let result
+  try {
+    result = await db.collection('users').doc(openid).get()
+  } catch (e) {
+    return { code: 'NOT_FOUND', message: '用户不存在' }
+  }
+  if (!result.data) return { code: 'NOT_FOUND', message: '用户不存在' }
+  const usedBytes = Number(result.data.used_bytes) || 0
+  const limitBytes = Number(result.data.limit_bytes) || 524288000
+  const full = usedBytes >= limitBytes
+  return {
+    code: 'SUCCESS',
+    data: {
+      used_bytes: usedBytes,
+      limit_bytes: limitBytes,
+      warning: !full && usedBytes / limitBytes >= 0.85,
+      full,
+    },
+  }
+}
+
 // ============================================================
 // 环境健康检查
 // ============================================================
@@ -198,10 +220,12 @@ exports.main = async (event, context) => {
         return handleLogin(OPENID)
       case 'getStatus':
         return handleGetStatus(OPENID)
+      case 'getSpaceUsage':
+        return handleGetSpaceUsage(OPENID)
       case 'healthCheck':
         return handleHealthCheck(OPENID)
       default:
-        return { code: 'UNKNOWN_TYPE', message: '未知操作类型，支持: login | getStatus | healthCheck' }
+        return { code: 'UNKNOWN_TYPE', message: '未知操作类型，支持: login | getStatus | getSpaceUsage | healthCheck' }
     }
   } catch (err) {
     console.error('[user]', err)

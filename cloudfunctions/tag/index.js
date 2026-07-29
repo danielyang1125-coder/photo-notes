@@ -47,19 +47,89 @@ function normalizeTagName(input) {
 // ============================================================
 async function handleList(openid, event) {
   const { mode = 'ALL' } = event
+  if (!['ALL', 'QUICK'].includes(mode)) {
+    return { code: 'VALIDATION_ERROR', message: 'mode 仅支持 ALL 或 QUICK' }
+  }
   const limit = mode === 'QUICK' ? QUICK_LIMIT : TAG_MAX_COUNT
-  const result = await db.collection('tags')
-    .where({ _openid: openid })
-    .orderBy('last_used_at', 'desc')
-    .orderBy('updated_at', 'desc')
-    .orderBy('created_at', 'desc')
-    .limit(limit)
-    .get()
+  const query = db.collection('tags').where({ _openid: openid })
+  const [result, countResult] = await Promise.all([
+    query
+      .orderBy('last_used_at', 'desc')
+      .orderBy('updated_at', 'desc')
+      .orderBy('created_at', 'desc')
+      .limit(limit)
+      .get(),
+    query.count(),
+  ])
   const list = (result.data || []).map(t => ({
     _id: t._id, name: t.name, photo_count: t.photo_count || 0,
     last_used_at: t.last_used_at, created_at: t.created_at, updated_at: t.updated_at,
   }))
-  return { code: 'SUCCESS', data: { list, total: list.length } }
+  return { code: 'SUCCESS', data: { list, total: countResult.total } }
+}
+
+// ============================================================
+// batchAddPhotoTags — 为一批已上传图片添加一个或多个标签
+// ============================================================
+async function handleBatchAddPhotoTags(openid, event) {
+  const photoIds = [...new Set(event.photoIds || [])]
+  const tagIds = [...new Set(event.tagIds || [])]
+  if (photoIds.length === 0 || tagIds.length === 0) {
+    return { code: 'VALIDATION_ERROR', message: '缺少 photoIds 或 tagIds' }
+  }
+  if (photoIds.length > 20 || tagIds.length > PHOTO_TAG_MAX) {
+    return { code: 'VALIDATION_ERROR', message: '批量图片或标签数量超出限制' }
+  }
+
+  const [photosResult, tagsResult] = await Promise.all([
+    db.collection('photos').where({ _openid: openid, _id: _.in(photoIds) }).get(),
+    db.collection('tags').where({ _openid: openid, _id: _.in(tagIds) }).get(),
+  ])
+  if ((photosResult.data || []).length !== photoIds.length) {
+    return { code: 'PHOTO_NOT_FOUND', message: '部分图片不存在' }
+  }
+  if ((tagsResult.data || []).length !== tagIds.length) {
+    return { code: 'TAG_NOT_FOUND', message: '部分标签不存在' }
+  }
+
+  let addedCount = 0
+  for (const photo of photosResult.data) {
+    const currentResult = await db.collection('photo_tags')
+      .where({ _openid: openid, photo_id: photo._id }).get()
+    const currentIds = (currentResult.data || []).map(item => item.tag_id)
+    const toAdd = tagIds.filter(id => !currentIds.includes(id))
+    if (currentIds.length + toAdd.length > PHOTO_TAG_MAX) {
+      return { code: 'PHOTO_TAG_LIMIT_REACHED', message: `每张图片最多 ${PHOTO_TAG_MAX} 个标签` }
+    }
+    if (toAdd.length === 0) continue
+
+    const transaction = await db.startTransaction()
+    try {
+      for (const tagId of toAdd) {
+        await transaction.collection('photo_tags').add({
+          data: {
+            _openid: openid,
+            photo_id: photo._id,
+            tag_id: tagId,
+            photo_upload_time: photo.upload_time,
+            created_at: db.serverDate(),
+          },
+        })
+        await transaction.collection('tags').doc(tagId).update({
+          data: { photo_count: _.inc(1), last_used_at: db.serverDate() },
+        })
+      }
+      await transaction.collection('photos').doc(photo._id).update({
+        data: { tag_count: _.inc(toAdd.length) },
+      })
+      await transaction.commit()
+      addedCount += toAdd.length
+    } catch (error) {
+      await transaction.rollback()
+      throw error
+    }
+  }
+  return { code: 'SUCCESS', data: { addedCount } }
 }
 
 // ============================================================
@@ -273,7 +343,8 @@ exports.main = async (event, context) => {
       case 'delete':          return handleDelete(openid, event)
       case 'getPhotoTags':    return handleGetPhotoTags(openid, event)
       case 'updatePhotoTags': return handleUpdatePhotoTags(openid, event)
-      default: return { code: 'UNKNOWN_TYPE', message: '支持: list | create | rename | delete | getPhotoTags | updatePhotoTags' }
+      case 'batchAddPhotoTags': return handleBatchAddPhotoTags(openid, event)
+      default: return { code: 'UNKNOWN_TYPE', message: '支持: list | create | rename | delete | getPhotoTags | updatePhotoTags | batchAddPhotoTags' }
     }
   } catch (err) {
     if (err.code && err.code !== 'INTERNAL_ERROR') return { code: err.code, message: err.message }

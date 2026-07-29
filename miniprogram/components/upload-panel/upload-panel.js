@@ -4,7 +4,8 @@ const { validatePhotoFormat, validatePhotoSize, readableLimit } = require('../..
 const C = require('../../utils/constants')
 const uploadService = require('../../services/upload')
 
-let batchSeq = 0
+const ACTIVE_STATUS = ['pending', 'compressing', 'uploading', 'confirming']
+const FINAL_STATUS = ['success', 'failed', 'cancelled']
 
 Component({
   properties: {
@@ -15,198 +16,257 @@ Component({
     tasks: [],
     maxCount: C.UPLOAD_MAX_COUNT,
     showLeaveConfirm: false,
+    totalCount: 0,
+    uploadedCount: 0,
+    successCount: 0,
+    failedCount: 0,
+    hasActive: false,
+    allDone: false,
   },
 
-  computed: {
-    totalCount() { return this.data.tasks.length },
-    uploadedCount() {
-      return this.data.tasks.filter((t) => t.status === 'success').length
+  lifetimes: {
+    attached() {
+      this._batchGeneration = 0
+      this._running = new Set()
+      this._uploadHandles = {}
     },
-    successCount() { return this.data.tasks.filter((t) => t.status === 'success').length },
-    hasActive() {
-      return this.data.tasks.some((t) => ['pending', 'compressing', 'uploading', 'confirming'].includes(t.status))
-    },
-    allDone() {
-      if (this.data.tasks.length === 0) return false
-      return this.data.tasks.every((t) => ['success', 'failed', 'cancelled'].includes(t.status))
-    },
-  },
-
-  observers: {
-    visible(val) {
-      if (!val) this._resetBatchSeq()
+    detached() {
+      this.cancelActiveTasks()
     },
   },
 
   methods: {
-    _resetBatchSeq() { batchSeq++ },
+    _setTasks(tasks, extra = {}, callback) {
+      const successCount = tasks.filter(task => task.status === 'success').length
+      const failedCount = tasks.filter(task => task.status === 'failed').length
+      const hasActive = tasks.some(task => ACTIVE_STATUS.includes(task.status))
+      const allDone = tasks.length > 0 && tasks.every(task => FINAL_STATUS.includes(task.status))
+      this.setData({
+        tasks,
+        totalCount: tasks.length,
+        uploadedCount: successCount,
+        successCount,
+        failedCount,
+        hasActive,
+        allDone,
+        ...extra,
+      }, callback)
+    },
+
+    _updateTask(id, patch) {
+      const tasks = this.data.tasks.map(task => task.id === id ? { ...task, ...patch } : task)
+      this._setTasks(tasks)
+    },
+
+    _getTask(id) {
+      return this.data.tasks.find(task => task.id === id)
+    },
+
+    _isRunnable(id, generation) {
+      const task = this._getTask(id)
+      return generation === this._batchGeneration && task && ACTIVE_STATUS.includes(task.status)
+    },
 
     handleVisibleChange(e) {
-      if (!e.detail.visible) {
-        // 关闭时检查是否有活跃任务
-        if (this.data.hasActive) {
-          this.setData({ showLeaveConfirm: true })
-        } else {
-          this.triggerEvent('close')
-        }
+      if (e.detail.visible) return
+      if (this.data.hasActive) {
+        this.setData({ showLeaveConfirm: true })
+      } else {
+        this.triggerEvent('close')
       }
-      // 打开时不触发任何事件
     },
 
-    handleCancelLeave() { this.setData({ showLeaveConfirm: false }) },
-    handleConfirmLeave() {
+    handleCancelLeave() {
       this.setData({ showLeaveConfirm: false })
-      // 取消所有非成功任务
-      const tasks = this.data.tasks.map((t) => {
-        if (t.status !== 'success') return { ...t, status: 'cancelled' }
-        return t
-      })
-      this.setData({ tasks })
     },
 
-    /** 选择图片 */
-    handleChooseImage() {
-      const remaining = C.UPLOAD_MAX_COUNT - this.data.tasks.length
-      if (remaining <= 0) return wx.showToast({ title: '最多上传' + C.UPLOAD_MAX_COUNT + '张', icon: 'none' })
+    handleConfirmLeave() {
+      this.cancelActiveTasks()
+      this.setData({ showLeaveConfirm: false })
+      this.triggerEvent('close')
+    },
 
+    chooseImage(sourceType) {
+      if (this.data.hasActive) {
+        wx.showToast({ title: '图片正在上传，请稍候', icon: 'none' })
+        return
+      }
+      this._setTasks([])
+      this._chooseMedia(typeof sourceType === 'string' ? sourceType : '')
+    },
+
+    handleChooseImage() {
+      this._chooseMedia('')
+    },
+
+    _chooseMedia(sourceType) {
+      const remaining = C.UPLOAD_MAX_COUNT - this.data.tasks.length
+      if (remaining <= 0) {
+        wx.showToast({ title: `最多上传${C.UPLOAD_MAX_COUNT}张`, icon: 'none' })
+        return
+      }
       wx.chooseMedia({
         count: remaining,
         mediaType: ['image'],
         sizeType: ['original'],
-        sourceType: ['album', 'camera'],
+        sourceType: sourceType ? [sourceType] : ['album', 'camera'],
         success: (res) => {
-          const newTasks = res.tempFiles.map((f, i) => ({
-            id: 'task_' + Date.now() + '_' + i,
-            filePath: f.tempFilePath,
-            fileName: '图片 ' + (Date.now() % 10000),
-            fileSize: f.size,
-            status: 'pending',
-            progress: 0,
-            thumb: f.thumbTempFilePath || f.tempFilePath,
-            error: '',
-            photoId: null,
-          }))
-          this.setData({ tasks: [...this.data.tasks, ...newTasks] })
-          this._processQueue()
+          const files = res.tempFiles || []
+          if (files.length === 0) return
+          const now = Date.now()
+          const newTasks = files.map((file, index) => {
+            const stableId = `${now}_${index}_${Math.random().toString(36).slice(2, 10)}`
+            return {
+              id: `task_${stableId}`,
+              requestId: `upload_${stableId}`,
+              filePath: file.tempFilePath,
+              fileName: `图片 ${this.data.tasks.length + index + 1}`,
+              fileSize: file.size,
+              status: 'pending',
+              progress: 0,
+              thumb: file.thumbTempFilePath || file.tempFilePath,
+              error: '',
+              photoId: null,
+            }
+          })
+          this._setTasks([...this.data.tasks, ...newTasks], {}, () => {
+            this.triggerEvent('selected', { count: newTasks.length })
+            this._pumpQueue()
+          })
         },
       })
     },
 
-    /** 处理上传队列（并发3） */
-    async _processQueue() {
-      const batchId = 'batch_' + Date.now()
-      batchSeq++
-
-      const processNext = async () => {
-        const tasks = this.data.tasks
-        const pending = tasks.findIndex((t) => t.status === 'pending')
-        if (pending === -1) return
-
-        const activeCount = tasks.filter((t) => ['compressing', 'uploading', 'confirming'].includes(t.status)).length
-        if (activeCount >= C.UPLOAD_CONCURRENCY) return
-
-        const task = tasks[pending]
-        this._updateTask(task.id, { status: 'compressing' })
-
-        try {
-          // Step 1: 校验
-          const ext = task.filePath.split('.').pop()
-          if (!validatePhotoFormat(ext)) {
-            this._updateTask(task.id, { status: 'failed', error: '不支持的格式' })
-            processNext()
-            return
-          }
-          if (!validatePhotoSize(task.fileSize)) {
-            this._updateTask(task.id, { status: 'failed', error: '超过' + readableLimit() })
-            processNext()
-            return
-          }
-
-          // Step 2: EXIF 提取
-          const exif = await extractShootTime(task.filePath)
-
-          // Step 3: 压缩
-          const compressed = await compress(task.filePath)
-
-          // Step 4: 上传到云存储
-          this._updateTask(task.id, { status: 'uploading', progress: 0 })
-          const ext2 = task.filePath.split('.').pop() || 'jpg'
-          const ts = Date.now()
-          const rand = Math.random().toString(36).slice(2, 10)
-          const cloudPath = 'photos/' + ts + '_' + rand + '.' + ext2
-
-          const uploadResult = await new Promise((resolve, reject) => {
-            const uploadTask = wx.cloud.uploadFile({
-              cloudPath,
-              filePath: compressed.path,
-              success: resolve,
-              fail: reject,
-            })
-            uploadTask.onProgressUpdate((res) => {
-              this._updateTask(task.id, { progress: res.progress })
-            })
+    _pumpQueue() {
+      while (this._running.size < C.UPLOAD_CONCURRENCY) {
+        const next = this.data.tasks.find(task =>
+          task.status === 'pending' && !this._running.has(task.id)
+        )
+        if (!next) break
+        this._running.add(next.id)
+        this._runTask(next.id, this._batchGeneration)
+          .finally(() => {
+            this._running.delete(next.id)
+            delete this._uploadHandles[next.id]
+            this._pumpQueue()
           })
+      }
+    },
 
-          // Step 5: confirm
-          this._updateTask(task.id, { status: 'confirming' })
-          const taskId = batchId + '_' + pending
-          const confirmResult = await uploadService.confirm({
-            fileId: uploadResult.fileID,
-            size: compressed.size,
-            width: compressed.width,
-            height: compressed.height,
-            format: compressed.path.endsWith('.png') ? 'PNG' : 'JPEG',
-            shootTime: exif.shootTime ? exif.shootTime.toISOString() : null,
-            timeSource: exif.timeSource,
-            taskId,
+    async _runTask(taskId, generation) {
+      const initialTask = this._getTask(taskId)
+      if (!initialTask) return
+      this._updateTask(taskId, { status: 'compressing', error: '', progress: 0 })
+      let uploadedFileId = ''
+      try {
+        const ext = (initialTask.filePath.split('.').pop() || '').toUpperCase()
+        if (!validatePhotoFormat(ext)) throw new Error('不支持的格式')
+        if (!validatePhotoSize(initialTask.fileSize)) throw new Error(`超过${readableLimit()}`)
+
+        const exif = await extractShootTime(initialTask.filePath)
+        if (!this._isRunnable(taskId, generation)) return
+        const compressed = await compress(initialTask.filePath)
+        if (!this._isRunnable(taskId, generation)) return
+
+        this._updateTask(taskId, { status: 'uploading', progress: 0 })
+        const cloudPath = `photos/${Date.now()}_${Math.random().toString(36).slice(2, 10)}.${ext || 'jpg'}`
+        const uploadResult = await new Promise((resolve, reject) => {
+          const uploadTask = wx.cloud.uploadFile({
+            cloudPath,
+            filePath: compressed.path,
+            success: resolve,
+            fail: reject,
           })
-
-          if (confirmResult.result.code === 'SUCCESS') {
-            this._updateTask(task.id, {
-              status: 'success',
-              photoId: confirmResult.result.data.photo._id,
-            })
-          } else if (confirmResult.result.code === 'CONTENT_REVIEW_FAILED') {
-            this._updateTask(task.id, { status: 'failed', error: '内容不合规' })
-          } else {
-            this._updateTask(task.id, { status: 'failed', error: confirmResult.result.message || '处理失败' })
-          }
-        } catch (e) {
-          this._updateTask(task.id, { status: 'failed', error: e.message || '上传失败' })
+          this._uploadHandles[taskId] = uploadTask
+          uploadTask.onProgressUpdate(progress => {
+            if (this._isRunnable(taskId, generation)) {
+              this._updateTask(taskId, { progress: progress.progress })
+            }
+          })
+        })
+        uploadedFileId = uploadResult.fileID
+        if (!this._isRunnable(taskId, generation)) {
+          if (uploadedFileId) wx.cloud.deleteFile({ fileList: [uploadedFileId] }).catch(() => {})
+          return
         }
 
-        processNext()
-      }
-
-      // 启动并发
-      for (let i = 0; i < C.UPLOAD_CONCURRENCY; i++) {
-        processNext()
+        this._updateTask(taskId, { status: 'confirming' })
+        const confirmResult = await uploadService.confirm({
+          fileId: uploadedFileId,
+          size: compressed.size,
+          width: compressed.width,
+          height: compressed.height,
+          format: compressed.path.toLowerCase().endsWith('.png') ? 'PNG' : 'JPEG',
+          shootTime: exif.shootTime ? exif.shootTime.toISOString() : null,
+          timeSource: exif.timeSource,
+          taskId: initialTask.requestId,
+        })
+        if (!this._isRunnable(taskId, generation)) return
+        if (confirmResult.result.code === 'SUCCESS') {
+          this._updateTask(taskId, {
+            status: 'success',
+            progress: 100,
+            photoId: confirmResult.result.data.photo._id,
+          })
+        } else {
+          const message = confirmResult.result.code === 'SPACE_EXCEEDED'
+            ? '存储空间不足'
+            : confirmResult.result.code === 'CONTENT_REVIEW_FAILED'
+              ? '内容不合规'
+              : confirmResult.result.message || '处理失败'
+          this._updateTask(taskId, { status: 'failed', error: message })
+        }
+      } catch (error) {
+        if (this._isRunnable(taskId, generation)) {
+          this._updateTask(taskId, { status: 'failed', error: error.message || '上传失败' })
+        }
       }
     },
 
-    _updateTask(id, patch) {
-      const tasks = this.data.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t))
-      this.setData({ tasks })
+    handleRetryTask(e) {
+      const taskId = e.currentTarget.dataset.id
+      const task = this._getTask(taskId)
+      if (!task || task.status !== 'failed') return
+      this._updateTask(taskId, { status: 'pending', progress: 0, error: '' })
+      this._pumpQueue()
     },
 
-    /** 完成 — 触发批量标签 */
+    handleAddTags() {
+      const photoIds = this.data.tasks
+        .filter(task => task.status === 'success' && task.photoId)
+        .map(task => task.photoId)
+      if (photoIds.length > 0) this.triggerEvent('addtags', { photoIds })
+    },
+
     handleDone() {
-      const successTasks = this.data.tasks.filter((t) => t.status === 'success')
       this.triggerEvent('done', {
-        photoIds: successTasks.map((t) => t.photoId).filter(Boolean),
-        successCount: successTasks.length,
-        failedCount: this.data.tasks.filter((t) => t.status === 'failed').length,
+        photoIds: this.data.tasks.filter(task => task.status === 'success').map(task => task.photoId),
+        successCount: this.data.successCount,
+        failedCount: this.data.failedCount,
       })
-      this.close()
+      this._setTasks([])
     },
 
     handleCancel() {
       this.setData({ showLeaveConfirm: true })
     },
 
-    close() {
-      this.setData({ tasks: [], showLeaveConfirm: false })
+    handleCloseCompleted() {
       this.triggerEvent('close')
+    },
+
+    cancelActiveTasks() {
+      this._batchGeneration += 1
+      Object.keys(this._uploadHandles).forEach(id => {
+        const handle = this._uploadHandles[id]
+        if (handle && handle.abort) handle.abort()
+      })
+      this._uploadHandles = {}
+      const tasks = this.data.tasks.map(task =>
+        ACTIVE_STATUS.includes(task.status) ? { ...task, status: 'cancelled', error: '' } : task
+      )
+      this._running.clear()
+      this._setTasks(tasks)
     },
   },
 })

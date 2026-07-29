@@ -1,12 +1,14 @@
 {
   "usingComponents": {
     "t-button": "tdesign-miniprogram/button/button",
+    "t-icon": "tdesign-miniprogram/icon/icon",
     "t-notice-bar": "tdesign-miniprogram/notice-bar/notice-bar",
+    "t-popup": "tdesign-miniprogram/popup/popup",
     "photo-card": "../../components/photo-card/photo-card",
     "page-state": "../../components/page-state/page-state",
     "upload-panel": "../../components/upload-panel/upload-panel",
     "tag-filter-bar": "../../components/tag-filter-bar/tag-filter-bar"
   },
   "navigationStyle": "custom",
-  "enablePullDownRefresh": true
+  "enablePullDownRefresh": false
 }

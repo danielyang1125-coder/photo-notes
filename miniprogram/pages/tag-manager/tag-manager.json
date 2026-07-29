@@ -5,7 +5,8 @@
     "t-action-sheet": "tdesign-miniprogram/action-sheet/action-sheet",
     "t-dialog": "tdesign-miniprogram/dialog/dialog",
     "t-skeleton": "tdesign-miniprogram/skeleton/skeleton",
-    "t-empty": "tdesign-miniprogram/empty/empty"
+    "t-empty": "tdesign-miniprogram/empty/empty",
+    "t-button": "tdesign-miniprogram/button/button"
   },
   "navigationStyle": "custom"
 }

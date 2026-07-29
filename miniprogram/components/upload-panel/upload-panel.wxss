@@ -29,6 +29,11 @@
 .status-success { color: #00A870; }
 .status-failed { color: #E34D59; }
 .status-cancel { color: #999; }
+.batch-summary {
+  padding:16rpx 32rpx 0;
+  color:#666;
+  font-size:24rpx;
+}
 .panel-footer {
   padding: 24rpx 32rpx;
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));

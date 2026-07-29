@@ -23,9 +23,21 @@
             <text wx:elif="{{item.status === 'cancelled'}}" class="status-cancel">已取消</text>
           </text>
         </view>
+        <t-button
+          wx:if="{{item.status === 'failed'}}"
+          size="small"
+          variant="text"
+          theme="primary"
+          data-id="{{item.id}}"
+          bind:tap="handleRetryTask"
+        >重试</t-button>
         <t-progress wx:if="{{item.status === 'uploading'}}" percentage="{{item.progress}}" size="small" />
       </view>
     </scroll-view>
+
+    <view wx:if="{{allDone}}" class="batch-summary">
+      上传完成：成功 {{successCount}} 张，失败 {{failedCount}} 张
+    </view>
 
     <!-- 操作按钮 -->
     <view class="panel-footer">
@@ -34,6 +46,12 @@
       </t-button>
       <t-button wx:if="{{allDone && successCount > 0}}" theme="primary" size="large" block bind:tap="handleDone">
         完成
+      </t-button>
+      <t-button wx:if="{{allDone && successCount > 0}}" theme="default" size="large" block bind:tap="handleAddTags">
+        为本批图片添加标签
+      </t-button>
+      <t-button wx:if="{{allDone && successCount === 0}}" theme="default" size="large" block bind:tap="handleCloseCompleted">
+        关闭
       </t-button>
       <t-button wx:if="{{hasActive}}" theme="default" size="large" block bind:tap="handleCancel">
         取消上传

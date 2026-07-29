@@ -8,6 +8,9 @@ App({
     refreshPhotos: false,
     refreshNotes: false,
     refreshTags: false,
+    photoListChange: null,
+    spaceUsage: null,
+    spaceWarningShown: false,
   },
 
   onLaunch: function () {

@@ -13,6 +13,10 @@ export function getStatus() {
   return call('getStatus')
 }
 
+export function getSpaceUsage() {
+  return call('getSpaceUsage')
+}
+
 export function healthCheck() {
   return call('healthCheck')
 }

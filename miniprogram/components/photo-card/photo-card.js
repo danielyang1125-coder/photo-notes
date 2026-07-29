@@ -9,12 +9,23 @@ Component({
       value: 360,
     },
   },
+  data: {
+    imageError: false,
+  },
+  observers: {
+    'photo.thumbnail_url'() {
+      this.setData({ imageError: false })
+    },
+  },
   methods: {
     handleTap() {
       const { _id } = this.properties.photo
       if (_id) {
-        wx.navigateTo({ url: '/pages/preview/preview?photoId=' + _id })
+        this.triggerEvent('select', { photoId: _id })
       }
+    },
+    handleImageError() {
+      this.setData({ imageError: true })
     },
   },
 })

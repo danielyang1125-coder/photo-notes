@@ -1,16 +1,21 @@
 <!-- PG-002 图片列表 -->
 <view class="page">
-  <!-- 固定导航栏 -->
   <view class="nav-fixed" style="height: {{navTotalHeight}}px; padding-top: {{statusBarHeight}}px;">
-    <view class="nav-inner">
+    <view class="nav-inner" style="height: {{navBarHeight}}px;">
       <text class="nav-title">图片</text>
+      <view
+        class="settings-button"
+        style="right: {{settingsRight}}px;"
+        role="button"
+        aria-label="打开设置"
+        bind:tap="handleOpenSettings"
+      >
+        <t-icon name="setting" size="42rpx" />
+      </view>
     </view>
   </view>
 
-  <!-- 内容区（留出导航栏高度） -->
   <view class="content" style="padding-top: {{navTotalHeight}}px;">
-
-    <!-- 空间预警 -->
     <t-notice-bar
       wx:if="{{spaceWarning}}"
       visible
@@ -18,8 +23,8 @@
       theme="warning"
     />
 
-    <!-- 标签筛选栏 -->
     <tag-filter-bar
+      id="tagFilterBar"
       active="{{filter.scope}}"
       activeTagId="{{filter.tagId}}"
       bind:filter="handleFilterChange"
@@ -27,43 +32,123 @@
       bind:manage="handleTagManage"
     />
 
-    <!-- 状态 -->
     <page-state
-      wx:if="{{pageState !== 'ready'}}"
+      wx:if="{{pageState === 'initialLoading' || pageState === 'initialError'}}"
       state="{{pageState}}"
-      emptyText="还没有图片，点击右下角 + 上传"
       bind:retry="handleRetry"
     />
 
-    <!-- 瀑布流 -->
     <scroll-view
-      wx:if="{{pageState === 'ready'}}"
+      wx:else
       class="waterfall-scroll"
       scroll-y
       enhanced
       show-scrollbar="{{false}}"
+      refresher-enabled
+      refresher-triggered="{{refresherTriggered}}"
+      bindrefresherrefresh="handleRefresh"
+      bindscroll="handleScroll"
       bindscrolltolower="handleLoadMore"
       lower-threshold="300"
-      style="height: calc(100vh - {{navTotalHeight}}px);"
+      scroll-top="{{scrollTop}}"
+      style="height: calc(100vh - {{navTotalHeight}}px - 92rpx);"
     >
-      <view class="waterfall">
+      <view wx:if="{{pageState === 'empty'}}" class="filter-empty">
+        <t-icon name="image" size="112rpx" color="#bbb" />
+        <text class="empty-title">
+          {{filter.scope === 'ALL' ? '还没有图片' : filter.scope === 'UNCATEGORIZED' ? '所有图片都已添加标签' : '这个标签下还没有图片'}}
+        </text>
+        <t-button
+          wx:if="{{filter.scope === 'ALL'}}"
+          theme="primary"
+          size="medium"
+          aria-label="上传第一张图片"
+          bind:tap="handleOpenUpload"
+        >上传第一张图片</t-button>
+        <t-button
+          wx:elif="{{filter.scope === 'UNCATEGORIZED'}}"
+          theme="primary"
+          variant="outline"
+          size="medium"
+          aria-label="添加图片"
+          bind:tap="handleOpenUpload"
+        >添加图片</t-button>
+        <t-button
+          wx:else
+          theme="primary"
+          variant="outline"
+          size="medium"
+          aria-label="查看全部图片"
+          bind:tap="handleViewAll"
+        >查看全部图片</t-button>
+      </view>
+
+      <view wx:else class="waterfall">
         <view class="column">
-          <photo-card wx:for="{{leftList}}" wx:key="_id" photo="{{item}}" cardHeight="{{item._cardHeight}}" />
+          <photo-card
+            wx:for="{{leftList}}"
+            wx:key="_id"
+            photo="{{item}}"
+            cardHeight="{{item._cardHeight}}"
+            bind:select="handlePhotoSelect"
+          />
         </view>
         <view class="column">
-          <photo-card wx:for="{{rightList}}" wx:key="_id" photo="{{item}}" cardHeight="{{item._cardHeight}}" />
+          <photo-card
+            wx:for="{{rightList}}"
+            wx:key="_id"
+            photo="{{item}}"
+            cardHeight="{{item._cardHeight}}"
+            bind:select="handlePhotoSelect"
+          />
         </view>
       </view>
       <view wx:if="{{loadingMore}}" class="load-more">加载中…</view>
-      <view wx:if="{{!hasMore && list.length > 0}}" class="load-more end">— 已显示全部 —</view>
+      <view
+        wx:elif="{{loadMoreError}}"
+        class="load-more retry-more"
+        role="button"
+        aria-label="重试加载更多图片"
+        bind:tap="handleRetryLoadMore"
+      >{{loadMoreError}}</view>
+      <view wx:elif="{{!hasMore && list.length > 0}}" class="load-more end">— 已显示全部 —</view>
     </scroll-view>
   </view>
 
-  <!-- FAB 上传按钮 -->
-  <view class="fab" bind:tap="handleOpenUpload">
+  <t-button
+    t-class="fab-button"
+    theme="primary"
+    size="large"
+    shape="circle"
+    aria-label="上传图片"
+    bind:tap="handleOpenUpload"
+  >
     <text class="fab-icon">+</text>
-  </view>
+  </t-button>
 
-  <!-- 上传面板 -->
-  <upload-panel visible="{{showUpload}}" bind:close="handleCloseUpload" bind:done="handleUploadDone" />
+  <t-popup visible="{{showSourcePopup}}" placement="bottom" bind:visible-change="handleSourcePopupChange">
+    <view class="source-popup">
+      <view class="source-title">选择图片来源</view>
+      <view class="source-options">
+        <view class="source-option" hover-class="source-option--active" data-source="album" bind:tap="handleSourceSelect" role="button" aria-label="从相册选择">
+          <view class="source-icon"><t-icon name="image" size="34rpx" /></view>
+          <text>从相册选择</text>
+        </view>
+        <view class="source-option" hover-class="source-option--active" data-source="camera" bind:tap="handleSourceSelect" role="button" aria-label="拍照">
+          <view class="source-icon"><t-icon name="camera" size="36rpx" /></view>
+          <text>拍照</text>
+        </view>
+      </view>
+      <view class="source-cancel" hover-class="source-option--active" bind:tap="handleCloseSourcePopup" role="button" aria-label="取消选择图片来源">取消</view>
+    </view>
+  </t-popup>
+
+  <upload-panel
+    id="uploadPanel"
+    visible="{{showUpload}}"
+    bind:selected="handleUploadSelected"
+    bind:close="handleCloseUpload"
+    bind:done="handleUploadDone"
+    bind:addtags="handleUploadAddTags"
+  />
 </view>

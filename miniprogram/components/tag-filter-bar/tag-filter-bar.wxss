@@ -3,3 +3,26 @@
 .filter-tags { display:flex; gap:12rpx; }
 .filter-actions { flex-shrink:0; margin-left:12rpx; }
 .action { font-size:26rpx; color:#0052D9; padding:8rpx 8rpx; }
+.tag-name {
+  display: block;
+  max-width: 168rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-skeleton { display:flex; align-items:center; gap:12rpx; }
+.skeleton-pill {
+  width:112rpx;
+  height:52rpx;
+  border-radius:26rpx;
+  background:linear-gradient(90deg,#f2f2f2 25%,#fafafa 37%,#f2f2f2 63%);
+  background-size:400% 100%;
+  animation:tag-shimmer 1.2s ease infinite;
+}
+.skeleton-pill.short { width:72rpx; }
+.tag-error { display:flex; align-items:center; gap:12rpx; color:#999; font-size:22rpx; }
+.tag-error .retry { color:#0052D9; padding:10rpx 0; }
+@keyframes tag-shimmer {
+  0% { background-position:100% 0; }
+  100% { background-position:0 0; }
+}

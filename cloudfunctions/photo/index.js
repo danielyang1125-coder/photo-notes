@@ -23,39 +23,99 @@ async function checkUserActive(openid) {
 // ============================================================
 // list — ALL | UNCATEGORIZED | TAG
 // ============================================================
+async function getAllTagRelations(openid, tagId) {
+  const batchSize = 100
+  const relations = []
+  let offset = 0
+  while (true) {
+    const result = await db.collection('photo_tags')
+      .where({ _openid: openid, tag_id: tagId })
+      .orderBy('photo_upload_time', 'desc')
+      .skip(offset)
+      .limit(batchSize)
+      .get()
+    const batch = result.data || []
+    relations.push(...batch)
+    if (batch.length < batchSize) break
+    offset += batch.length
+  }
+  return relations
+}
+
+async function getPhotosByIds(openid, photoIds) {
+  const photos = []
+  for (let index = 0; index < photoIds.length; index += 100) {
+    const ids = photoIds.slice(index, index + 100)
+    if (ids.length === 0) continue
+    const result = await db.collection('photos')
+      .where({ _openid: openid, _id: _.in(ids) })
+      .get()
+    photos.push(...(result.data || []))
+  }
+  return photos
+}
+
 async function handleList(openid, event) {
   const { scope = 'ALL', tagId, page = 1, pageSize = 20 } = event
+  if (!['ALL', 'UNCATEGORIZED', 'TAG'].includes(scope)) {
+    return { code: 'VALIDATION_ERROR', message: '非法 scope' }
+  }
+  if (scope === 'TAG' && !tagId) {
+    return { code: 'VALIDATION_ERROR', message: 'TAG 筛选缺少 tagId' }
+  }
+  if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+    return { code: 'VALIDATION_ERROR', message: '分页参数不合法' }
+  }
   const skip = (page - 1) * pageSize
 
   let result
+  let total
   if (scope === 'UNCATEGORIZED') {
     result = await db.collection('photos')
       .where({ _openid: openid, tag_count: 0 })
       .orderBy('upload_time', 'desc').skip(skip).limit(pageSize).get()
-  } else if (scope === 'TAG' && tagId) {
+    const countResult = await db.collection('photos')
+      .where({ _openid: openid, tag_count: 0 }).count()
+    total = countResult.total
+  } else if (scope === 'TAG') {
     const tag = await db.collection('tags')
       .where({ _id: tagId, _openid: openid }).get()
     if (!tag.data || tag.data.length === 0) {
       return { code: 'TAG_NOT_FOUND', message: '标签不存在' }
     }
-    const relations = await db.collection('photo_tags')
-      .where({ _openid: openid, tag_id: tagId })
-      .orderBy('photo_upload_time', 'desc').skip(skip).limit(pageSize).get()
-    if (!relations.data || relations.data.length === 0) {
-      return { code: 'SUCCESS', data: { list: [], total: 0, hasMore: false } }
-    }
-    const photoIds = relations.data.map(r => r.photo_id)
-    result = await db.collection('photos')
-      .where({ _openid: openid, _id: _.in(photoIds) }).get()
+
+    // 先校验关系中的图片，避免失效关系造成分页空洞、重复或错误 hasMore。
+    const relations = await getAllTagRelations(openid, tagId)
+    const relationPhotoIds = [...new Set(relations.map(item => item.photo_id).filter(Boolean))]
+    const relatedPhotos = await getPhotosByIds(openid, relationPhotoIds)
     const photoMap = {}
-    result.data.forEach(p => { photoMap[p._id] = p })
-    result.data = photoIds.map(id => photoMap[id]).filter(Boolean)
+    relatedPhotos.forEach(photo => { photoMap[photo._id] = photo })
+    const seenRelationPhotos = new Set()
+    const invalidRelations = relations.filter(item => {
+      if (!photoMap[item.photo_id] || seenRelationPhotos.has(item.photo_id)) return true
+      seenRelationPhotos.add(item.photo_id)
+      return false
+    })
+    if (invalidRelations.length > 0) {
+      await Promise.all(invalidRelations.map(item =>
+        db.collection('photo_tags').doc(item._id).remove().catch(error => {
+          console.warn('[photo] 清理失效标签关系失败:', item._id, error.message)
+        })
+      ))
+    }
+    const validPhotoIds = relations
+      .map(item => item.photo_id)
+      .filter((id, index, ids) => photoMap[id] && ids.indexOf(id) === index)
+    total = validPhotoIds.length
+    result = { data: validPhotoIds.slice(skip, skip + pageSize).map(id => photoMap[id]) }
     await db.collection('tags').doc(tagId)
-      .update({ data: { last_used_at: db.serverDate() } })
+      .update({ data: { last_used_at: db.serverDate(), photo_count: total } })
   } else {
     result = await db.collection('photos')
       .where({ _openid: openid })
       .orderBy('upload_time', 'desc').skip(skip).limit(pageSize).get()
+    const countResult = await db.collection('photos').where({ _openid: openid }).count()
+    total = countResult.total
   }
 
   const photos = result.data || []
@@ -89,19 +149,6 @@ async function handleList(openid, event) {
     shoot_time: p.shoot_time, time_source: p.time_source,
     upload_time: p.upload_time,
   }))
-
-  let total
-  if (scope === 'TAG' && tagId) {
-    const c = await db.collection('photo_tags')
-      .where({ _openid: openid, tag_id: tagId }).count()
-    total = c.total
-  } else {
-    const whereCond = scope === 'UNCATEGORIZED'
-      ? { _openid: openid, tag_count: 0 }
-      : { _openid: openid }
-    const c = await db.collection('photos').where(whereCond).count()
-    total = c.total
-  }
 
   return { code: 'SUCCESS', data: { list, total, hasMore: skip + photos.length < total } }
 }

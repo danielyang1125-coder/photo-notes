@@ -43,6 +43,9 @@ async function handleConfirm(openid, event) {
   const existing = await db.collection('photos')
     .where({ _openid: openid, task_id: taskId }).get()
   if (existing.data && existing.data.length > 0) {
+    if (existing.data[0].file_id !== fileId) {
+      try { await cloud.deleteFile({ fileList: [fileId] }) } catch (_) {}
+    }
     return {
       code: 'SUCCESS',
       data: { photo: { _id: existing.data[0]._id, ...existing.data[0] }, duplicated: true },
@@ -54,6 +57,7 @@ async function handleConfirm(openid, event) {
   const usedBytes = user.data ? (user.data.used_bytes || 0) : 0
   const limitBytes = user.data ? (user.data.limit_bytes || 524288000) : 524288000
   if (usedBytes + (size || 0) > limitBytes) {
+    try { await cloud.deleteFile({ fileList: [fileId] }) } catch (_) {}
     return { code: 'SPACE_EXCEEDED', message: '存储空间不足' }
   }
 
@@ -95,12 +99,27 @@ async function handleConfirm(openid, event) {
     tag_count: 0,
     created_at: db.serverDate(),
   }
-  const addResult = await db.collection('photos').add({ data: photo })
-
-  // 原子更新空间用量
-  if (size > 0) {
-    await db.collection('users').doc(openid)
-      .update({ data: { used_bytes: _.inc(size) } })
+  // 在同一事务内再次校验空间并入库，防止 3 个并发任务共同越过上限。
+  const transaction = await db.startTransaction()
+  let addResult
+  try {
+    const latestUser = await transaction.collection('users').doc(openid).get()
+    const latestUsed = latestUser.data ? (latestUser.data.used_bytes || 0) : 0
+    const latestLimit = latestUser.data ? (latestUser.data.limit_bytes || 524288000) : 524288000
+    if (latestUsed + (size || 0) > latestLimit) {
+      await transaction.rollback()
+      try { await cloud.deleteFile({ fileList: [fileId] }) } catch (_) {}
+      return { code: 'SPACE_EXCEEDED', message: '存储空间不足' }
+    }
+    addResult = await transaction.collection('photos').add({ data: photo })
+    if (size > 0) {
+      await transaction.collection('users').doc(openid)
+        .update({ data: { used_bytes: _.inc(size) } })
+    }
+    await transaction.commit()
+  } catch (error) {
+    await transaction.rollback()
+    throw error
   }
 
   return {
