@@ -24,6 +24,7 @@ const PUBLIC_MESSAGES = Object.freeze({
   UPLOAD_FILE_MISMATCH: '上传文件不匹配',
   UPLOAD_FILE_INVALID: '上传文件无效',
   DELETION_ALREADY_PENDING: '已有未完成的注销任务',
+  NOTE_NOT_FOUND: '备注不存在或已删除',
   CONTENT_REVIEW_FAILED: '内容不合规',
   CONTENT_REVIEW_UNAVAILABLE: '内容审核服务暂时不可用',
   INTERNAL_ERROR: '服务暂时不可用，请稍后重试',

@@ -395,3 +395,113 @@ if (dev07Errors.length) {
 process.stdout.write(
   'DEV-07 audit manifest passed (BE-14, BE-15, PHD-01..PHD-12 static scope).\n',
 )
+
+// =========================================================================
+// DEV-08: 备注事务、乐观锁与 Cursor
+// =========================================================================
+const dev08Errors = []
+for (const relative of [
+  path.join('cloudfunctions', 'note', 'handlers.js'),
+  path.join('test', 'backend', 'note.test.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev08Errors.push(`artifact: ${relative}`)
+  }
+}
+
+// Check note/index.js
+const noteEntry08 = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'note', 'index.js'),
+  'utf8',
+)
+for (const evidence of [
+  'createNoteHandlers',
+  'add: ({ openid, event }) =>',
+  'update: ({ openid, event }) =>',
+  'delete: ({ openid, event }) =>',
+  'list: ({ openid, event }) =>',
+  'createBusinessMain',
+  'reviewContent',
+  'cursorSecret',
+]) {
+  if (!noteEntry08.includes(evidence)) {
+    dev08Errors.push(`note/index evidence: ${evidence}`)
+  }
+}
+// Must NOT contain old note_count manipulation
+if (/note_count\s*:/u.test(noteEntry08) || /['"]note_count['"]/u.test(noteEntry08) || /_.inc\(/u.test(noteEntry08)) {
+  dev08Errors.push('note/index: old note_count manipulation should be removed')
+}
+// Must NOT contain old inline handlers
+if (noteEntry08.includes('async function handleAdd') ||
+    noteEntry08.includes('async function handleUpdate') ||
+    noteEntry08.includes('async function handleDelete') ||
+    noteEntry08.includes('async function handleList')) {
+  dev08Errors.push('note/index: old inline handlers should be removed')
+}
+
+// Check note/handlers.js
+const noteHandlers08 = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'note', 'handlers.js'),
+  'utf8',
+)
+for (const evidence of [
+  'createNoteHandlers',
+  'projectNote',
+  'keysetCondition',
+  'decodeCursor',
+  'encodeCursor',
+  'NOTE',
+  "status: 'ACTIVE'",
+  'PHOTO_NOT_FOUND',
+  'NOTE_NOT_FOUND',
+  'validation.isoDate',
+  'validation.string',
+  'reviewContent',
+  'generateThumbnailUrls',
+  'MAX_SCAN_MULTIPLIER',
+]) {
+  if (!noteHandlers08.includes(evidence)) {
+    dev08Errors.push(`note/handlers evidence: ${evidence}`)
+  }
+}
+// Must NOT contain note_count field manipulation (check for field usage, not comments)
+if (/note_count\s*:/u.test(noteHandlers08) || /['"]note_count['"]/u.test(noteHandlers08) || /_.inc\(/u.test(noteHandlers08)) {
+  dev08Errors.push('note/handlers: note_count manipulation should be removed (V1 simplification)')
+}
+// Conflict must use where({_id, _openid}) not bare doc(id)
+if (noteHandlers08.includes('.doc(noteId).get()')) {
+  dev08Errors.push('note/handlers: conflict read must use where({_id,_openid}) not doc(noteId)')
+}
+// Must not use .skip()
+if (/\.skip\s*\(/u.test(noteHandlers08)) {
+  dev08Errors.push('note/handlers: must not use offset pagination (.skip)')
+}
+
+// Check response.js for NOTE_NOT_FOUND
+const response08 = fs.readFileSync(
+  path.join(root, 'cloudfunctions', '_shared', 'response.js'),
+  'utf8',
+)
+if (!response08.includes('NOTE_NOT_FOUND')) {
+  dev08Errors.push('response: NOTE_NOT_FOUND missing from PUBLIC_MESSAGES')
+}
+
+// Check backend-check.js no longer allows note .skip()
+const checkJs = fs.readFileSync(
+  path.join(root, 'scripts', 'backend-check.js'),
+  'utf8',
+)
+if (checkJs.includes("path.join('cloudfunctions', 'note', 'index.js')")) {
+  dev08Errors.push('backend-check: note/index.js should be removed from skip() temporaryAllow')
+}
+
+if (dev08Errors.length) {
+  process.stderr.write(
+    `DEV-08 audit failed:\n${dev08Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-08 audit manifest passed (BE-16, BE-17 static scope).\n',
+)

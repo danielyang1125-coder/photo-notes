@@ -43,7 +43,6 @@ const forbidden = [
     label: 'offset pagination (.skip)',
     temporaryAllow: new Set([
       path.join('cloudfunctions', 'photo', 'index.js'),
-      path.join('cloudfunctions', 'note', 'index.js'),
     ]),
   },
   { pattern: /console\.(?:log|warn|error)\s*\(/u, label: 'direct console logging' },
@@ -69,6 +68,6 @@ if (violations.length) {
 }
 
 process.stdout.write(
-  'Known DEV-06/DEV-08 pagination debt remains isolated to photo/note handlers.\n',
+  'Known DEV-06 pagination debt remains isolated to photo handlers.\n',
 )
 process.stdout.write(`Backend checks passed for ${files.length} JavaScript files.\n`)
