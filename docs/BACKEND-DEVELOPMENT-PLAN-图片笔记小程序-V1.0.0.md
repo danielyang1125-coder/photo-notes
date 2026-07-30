@@ -528,7 +528,7 @@ backend(DEV-xx): <任务结果>
 | DEV-01 数据、索引、回填与配置 | DONE | 2026-07-29 | 离线 dry-run 通过；7 个集合/21 个索引静态清单、幂等回填、索引漂移拒绝与双触发器测试通过；`npm run backend:audit` 通过，31/31 单测通过 | 真实集合/索引创建、权限、explain、触发器和存储反向用例留待 DEV-13，模板见 `BACKEND-CLOUD-ACCEPTANCE-DEV-01.md` |
 | DEV-02 用户身份与状态隔离 | DONE | 2026-07-29 | `npm run backend:audit` 通过；88 个 JS 语法/漂移/禁止模式检查通过；36/36 单测通过；覆盖 10 并发首登、ACTIVE/DELETING/DELETED/缺失用户矩阵和安全投影 | 目标云环境 10 并发首登、云函数运行时响应及日志样本复核并入 DEV-13；已静态覆盖 USR-01～USR-06、COM-04～COM-07 |
 | DEV-03 上传 attempt 与 cancel | DONE | 2026-07-29 | `npm run backend:audit` 通过；90 个 JS 语法/漂移/禁止模式检查通过；41/41 单测通过；覆盖 10 并发 prepare、24h 签发、终态重放、逐项 cancel、归属遮蔽及 cancel/confirm 两种提交顺序 | 新协议 confirm 的租约、真实性校验和最终事务由 DEV-04 完成；目标云环境并发 prepare、复合唯一索引与存储签发路径权限复核并入 DEV-13；已静态覆盖 UPL-01～UPL-04、UPL-18～UPL-19 |
-| DEV-04 可信 confirm 与最终事务 | TODO | — | — | — |
+| DEV-04 可信 confirm 与最终事务 | DONE | 2026-07-30 | `npm run backend:audit` 通过；92 个 JS 语法/漂移/禁止模式检查通过；49/49 单测通过；覆盖新协议拒旧字段、环境/路径绑定、静态 JPEG/PNG 解码、损坏/动态格式拒绝、≤750px/≤1MB 审核图、审核 fail-closed、active 随机提升与 SHA-256、租约/取消竞态、3 路配额竞争、10 次重放、事务故障后提升信息复用 | 目标云环境 fileID/存储提升、sharp Linux 运行时、内容审核违规/不可用、3/10 并发与唯一索引实测并入 DEV-13；pending/孤立 active 对象的分页补偿由 DEV-05 完成；已静态覆盖 UPL-05～UPL-16，建立 UPL-20 补偿登记 |
 | DEV-05 上传补偿与清理 | TODO | — | — | — |
 | DEV-06 图片查询与详情 | TODO | — | — | — |
 | DEV-07 异步图片删除 | TODO | — | — | — |

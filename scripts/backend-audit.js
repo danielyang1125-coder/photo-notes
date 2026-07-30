@@ -179,3 +179,66 @@ if (dev03Errors.length) {
 process.stdout.write(
   'DEV-03 audit manifest passed (UPL-01..UPL-04, UPL-18..UPL-19 static scope).\n',
 )
+
+const dev04Errors = []
+for (const relative of [
+  path.join('cloudfunctions', 'upload', 'image-processing.js'),
+  path.join('test', 'backend', 'upload-confirm.test.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev04Errors.push(`artifact: ${relative}`)
+  }
+}
+for (const evidence of [
+  'acquireConfirmLease',
+  'assertPendingFile',
+  'persistPromotion',
+  'finalizeConfirm',
+  "status: 'CONFIRMED'",
+  "status: 'ACTIVE'",
+  'upload_attempt_id',
+  'promoted_file_id',
+  'verified_meta',
+]) {
+  if (!uploadHandlers.includes(evidence)) {
+    dev04Errors.push(`upload confirm evidence: ${evidence}`)
+  }
+}
+const imageProcessing = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'upload', 'image-processing.js'),
+  'utf8',
+)
+for (const evidence of [
+  "return 'JPEG'",
+  "return 'PNG'",
+  "require('sharp')",
+  'REVIEW_MAX_EDGE = 750',
+  'REVIEW_MAX_BYTES = 1024 * 1024',
+  "createHash('sha256')",
+]) {
+  if (!imageProcessing.includes(evidence)) {
+    dev04Errors.push(`trusted image evidence: ${evidence}`)
+  }
+}
+if (!uploadEntry.includes(
+  "config.boolean('CONTENT_REVIEW_ENABLED')",
+)) {
+  dev04Errors.push('content review fail-closed configuration')
+}
+for (const evidence of [
+  'CONTENT_REVIEW_FAILED',
+  'CONTENT_REVIEW_UNAVAILABLE',
+]) {
+  if (!uploadEntry.includes(evidence)) {
+    dev04Errors.push(`content review mapping: ${evidence}`)
+  }
+}
+if (dev04Errors.length) {
+  process.stderr.write(
+    `DEV-04 audit failed:\n${dev04Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-04 audit manifest passed (UPL-05..UPL-16, UPL-20 static scope).\n',
+)
