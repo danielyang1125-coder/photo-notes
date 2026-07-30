@@ -1,26 +1,28 @@
 'use strict'
 
 const { withTransactionRetry } = require('./lib/shared/transaction')
+const {
+  LEASE_TTL_MS,
+  LEASE_RENEW_INTERVAL_MS,
+  MAX_RETRIES,
+  MAX_DAYS_SINCE_APPLIED,
+  DISPATCHABLE_STATUSES,
+  acquireTasks,
+  renewLease,
+  releaseLease,
+  failTask,
+  calculateBackoff,
+  toDate,
+} = require('./task-lease')
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants (task-lease re-exports + worker-specific)
 // ---------------------------------------------------------------------------
-const LEASE_TTL_MS = 10 * 60 * 1000 // 10 minutes
-const MAX_RETRIES = 10
-const MAX_DAYS_SINCE_APPLIED = 7
 const DEFAULT_BATCH_SIZE = 10
-
-const DISPATCHABLE_STATUSES = ['PENDING', 'RETRYING']
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function toDate(value) {
-  if (!value) return null
-  const d = value instanceof Date ? value : new Date(value)
-  return Number.isFinite(d.getTime()) ? d : null
-}
-
 function initialStageCursor() {
   return {
     notes_cursor: null,
@@ -42,88 +44,23 @@ function createPhotoDeleteWorker(deps) {
   } = deps
 
   const _ = db.command
+  let lastLeaseRenewal = null
 
   // -----------------------------------------------------------------------
-  // Acquire dispatchable tasks with lease
+  // Renew lease if enough time has passed since last renewal
   // -----------------------------------------------------------------------
-  async function acquireTasks(type, timestamp) {
-    const ts =
-      timestamp instanceof Date ? timestamp : new Date(timestamp)
-    const tasksCol = db.collection('deletion_tasks')
-
-    // Query 1: PENDING / RETRYING where next_retry_at is ready
-    const condition1 = {
-      type,
-      status: _.in(DISPATCHABLE_STATUSES),
-      next_retry_at: _.or([
-        _.eq(null),
-        _.lte(ts),
-      ]),
-    }
-    const q1 = await tasksCol
-      .where(condition1)
-      .limit(batchSize)
-      .get()
-    const candidates1 = Array.isArray(q1.data) ? q1.data : []
-
-    // Query 2: Expired PROCESSING leases
-    const condition2 = {
-      type,
-      status: 'PROCESSING',
-      lease_expire_at: _.and([
-        _.neq(null),
-        _.lt(ts),
-      ]),
-    }
-    const q2 = await tasksCol
-      .where(condition2)
-      .limit(batchSize)
-      .get()
-    const candidates2 = Array.isArray(q2.data) ? q2.data : []
-
-    // Deduplicate by _id
-    const seen = new Set()
-    const candidates = []
-    for (const t of [...candidates1, ...candidates2]) {
-      if (!seen.has(t._id)) {
-        seen.add(t._id)
-        candidates.push(t)
+  async function maybeRenewLease(task, timestamp) {
+    const ts = timestamp instanceof Date ? timestamp : new Date(timestamp)
+    const nowMs = ts.getTime()
+    const lastMs = lastLeaseRenewal ? lastLeaseRenewal.getTime() : 0
+    if (nowMs - lastMs >= LEASE_RENEW_INTERVAL_MS) {
+      const renewed = await renewLease({ db, task, now: ts })
+      if (renewed) {
+        lastLeaseRenewal = ts
       }
+      return renewed
     }
-
-    if (candidates.length === 0) return []
-
-    // Atomic lease acquisition – each update competes independently.
-    // Only keep tasks where our update succeeded.
-    const leaseExpireAt = new Date(ts.getTime() + LEASE_TTL_MS)
-    const results = await Promise.allSettled(
-      candidates.map(async (task) => {
-        // Use a random lease_token to prevent double-processing
-        const leaseToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-        const updateResult = await tasksCol
-          .where({
-            _id: task._id,
-            // Ensure we only update if still in a dispatchable state or
-            // expired lease, preventing two workers from both claiming.
-          })
-          .update({
-            data: {
-              status: 'PROCESSING',
-              lease_token: leaseToken,
-              lease_expire_at: leaseExpireAt,
-              updated_at: ts,
-            },
-          })
-
-        return updateResult.stats && updateResult.stats.updated > 0
-          ? { ...task, _lease_token: leaseToken }
-          : null
-      }),
-    )
-
-    return results
-      .filter((r) => r.status === 'fulfilled' && r.value !== null)
-      .map((r) => r.value)
+    return true // still within interval, no renewal needed
   }
 
   // -----------------------------------------------------------------------
@@ -137,7 +74,6 @@ function createPhotoDeleteWorker(deps) {
         await deleteFiles([task.file_id])
       } catch (err) {
         // "File not found" is success (idempotent).
-        // We check for known NOT_FOUND codes; everything else is a real failure.
         const code = (err && (err.errCode || err.code)) || ''
         const isNotFound =
           code === 'STORAGE_FILE_NON_EXIST' ||
@@ -284,10 +220,13 @@ function createPhotoDeleteWorker(deps) {
 
     if (!cursor.notes_done) {
       notesDeleted = await processNotesBatch(current || task, cursor)
+      // Renew lease during long-running batch processing
+      await maybeRenewLease(task, ts)
     }
 
     if (!cursor.photo_tags_done) {
       photoTagsDeleted = await processPhotoTagsBatch(current || task, cursor)
+      await maybeRenewLease(task, ts)
     }
 
     const allDone = cursor.notes_done && cursor.photo_tags_done
@@ -304,20 +243,7 @@ function createPhotoDeleteWorker(deps) {
         })
     } else {
       // Release lease so the next worker invocation can pick this task up
-      // for the next batch.  Without this, the task stays PROCESSING and
-      // won't be re-acquired until the lease expires.
-      await db
-        .collection('deletion_tasks')
-        .doc(task._id)
-        .update({
-          data: {
-            status: 'PENDING',
-            lease_token: null,
-            lease_expire_at: null,
-            next_retry_at: null,
-            updated_at: ts,
-          },
-        })
+      await releaseLease({ db, task, now: ts })
     }
 
     return { notesDeleted, photoTagsDeleted, allDone }
@@ -400,88 +326,27 @@ function createPhotoDeleteWorker(deps) {
   }
 
   // -----------------------------------------------------------------------
-  // Error handling: RETRYING or MANUAL_REQUIRED
-  // -----------------------------------------------------------------------
-  async function failTask(task, error, timestamp) {
-    const ts = timestamp instanceof Date ? timestamp : new Date(timestamp)
-
-    // Re-read to get current retry_count (may have been incremented by
-    // another stage failure within the same run)
-    const fresh = await db
-      .collection('deletion_tasks')
-      .doc(task._id)
-      .get()
-    const current =
-      fresh && fresh.data
-        ? Array.isArray(fresh.data)
-          ? fresh.data[0]
-          : fresh.data
-        : task
-
-    const retryCount = (current.retry_count || 0) + 1
-    const appliedAt = toDate(current.applied_at)
-    const daysSinceApplied = appliedAt
-      ? (ts.getTime() - appliedAt.getTime()) / 86400000
-      : 0
-
-    const safeCode = (error && (error.code || error.safeErrorCode)) || 'INTERNAL_ERROR'
-
-    if (retryCount >= MAX_RETRIES || daysSinceApplied >= MAX_DAYS_SINCE_APPLIED) {
-      // Terminal: MANUAL_REQUIRED
-      await db
-        .collection('deletion_tasks')
-        .doc(task._id)
-        .update({
-          data: {
-            status: 'MANUAL_REQUIRED',
-            lease_token: null,
-            lease_expire_at: null,
-            retry_count: retryCount,
-            last_error: safeCode,
-            last_error_at: ts,
-            updated_at: ts,
-          },
-        })
-    } else {
-      // Retry with exponential backoff
-      const backoffMs = Math.min(
-        60000 * Math.pow(2, retryCount),
-        86400000, // cap at 1 day
-      )
-      const nextRetryAt = new Date(ts.getTime() + backoffMs)
-
-      await db
-        .collection('deletion_tasks')
-        .doc(task._id)
-        .update({
-          data: {
-            status: 'RETRYING',
-            lease_token: null,
-            lease_expire_at: null,
-            retry_count: retryCount,
-            next_retry_at: nextRetryAt,
-            last_error: safeCode,
-            last_error_at: ts,
-            updated_at: ts,
-          },
-        })
-    }
-  }
-
-  // -----------------------------------------------------------------------
   // Main run method
   // -----------------------------------------------------------------------
   async function run() {
     const timestamp = now()
-    const ts =
-      timestamp instanceof Date ? timestamp : new Date(timestamp)
+    const ts = timestamp instanceof Date ? timestamp : new Date(timestamp)
 
-    const tasks = await acquireTasks('PHOTO_DELETE', ts)
+    // Reset lease renewal tracker for this run
+    lastLeaseRenewal = null
+
+    const tasks = await acquireTasks({
+      db,
+      type: 'PHOTO_DELETE',
+      now: ts,
+      batchSize,
+    })
 
     const summary = {
       acquired: tasks.length,
       succeeded: 0,
       failed: 0,
+      manualRequired: 0,
       details: [],
     }
 
@@ -515,7 +380,26 @@ function createPhotoDeleteWorker(deps) {
       } catch (err) {
         summary.failed++
         detail.error = (err && err.code) || 'INTERNAL_ERROR'
-        await failTask(task, err, ts)
+        await failTask({
+          db,
+          task,
+          error: err,
+          now: ts,
+        })
+        // Track MANUAL_REQUIRED escalation
+        const freshTask = await db
+          .collection('deletion_tasks')
+          .doc(task._id)
+          .get()
+        const updated =
+          freshTask && freshTask.data
+            ? Array.isArray(freshTask.data)
+              ? freshTask.data[0]
+              : freshTask.data
+            : null
+        if (updated && updated.status === 'MANUAL_REQUIRED') {
+          summary.manualRequired++
+        }
       }
 
       summary.details.push(detail)
@@ -529,7 +413,10 @@ function createPhotoDeleteWorker(deps) {
 
 module.exports = {
   LEASE_TTL_MS,
+  LEASE_RENEW_INTERVAL_MS,
   MAX_RETRIES,
   MAX_DAYS_SINCE_APPLIED,
+  DISPATCHABLE_STATUSES,
+  calculateBackoff,
   createPhotoDeleteWorker,
 }

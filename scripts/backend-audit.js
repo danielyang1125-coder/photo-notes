@@ -505,3 +505,180 @@ if (dev08Errors.length) {
 process.stdout.write(
   'DEV-08 audit manifest passed (BE-16, BE-17 static scope).\n',
 )
+
+// =========================================================================
+// DEV-12: cleanup 编排、安全与可观测性收口
+// =========================================================================
+const dev12Errors = []
+
+// Check task-lease.js shared module exists
+for (const relative of [
+  path.join('cloudfunctions', 'cleanup', 'task-lease.js'),
+  path.join('scripts', 'backend-task-inspect.js'),
+  path.join('scripts', 'backend-task-retry.js'),
+  path.join('scripts', 'backend-log-audit.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev12Errors.push(`artifact: ${relative}`)
+  }
+}
+
+// Check task-lease.js exports all required functions and constants
+const taskLeaseSource = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'cleanup', 'task-lease.js'),
+  'utf8',
+)
+for (const evidence of [
+  'async function acquireTasks',
+  'async function renewLease',
+  'async function releaseLease',
+  'async function failTask',
+  'function calculateBackoff',
+  'function toDate',
+  'LEASE_TTL_MS',
+  'LEASE_RENEW_INTERVAL_MS',
+  'MAX_RETRIES',
+  'MAX_DAYS_SINCE_APPLIED',
+  'DISPATCHABLE_STATUSES',
+  'module.exports',
+]) {
+  if (!taskLeaseSource.includes(evidence)) {
+    dev12Errors.push(`task-lease missing: ${evidence}`)
+  }
+}
+
+// Check photo-delete-worker imports from task-lease
+const pdw = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'cleanup', 'photo-delete-worker.js'),
+  'utf8',
+)
+for (const evidence of [
+  "require('./task-lease')",
+  'renewLease',
+  'maybeRenewLease',
+  'manualRequired',
+  'releaseLease({ db, task, now: ts })',
+]) {
+  if (!pdw.includes(evidence)) {
+    dev12Errors.push(`photo-delete-worker evidence: ${evidence}`)
+  }
+}
+
+// Check account-delete-worker imports from task-lease
+const adw = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'cleanup', 'account-delete-worker.js'),
+  'utf8',
+)
+for (const evidence of [
+  "require('./task-lease')",
+  'renewLease',
+  'maybeRenewLease',
+  'manualRequired',
+  'releaseLease({ db, task, now: ts })',
+  'refreshFn: refreshTask',
+]) {
+  if (!adw.includes(evidence)) {
+    dev12Errors.push(`account-delete-worker evidence: ${evidence}`)
+  }
+}
+
+// Check cleanup/index.js has TriggerName dispatch and security summaries
+const cleanupIndex = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'cleanup', 'index.js'),
+  'utf8',
+)
+for (const evidence of [
+  'runWorker',
+  'TriggerName',
+  'deleteTaskWorker',
+  'manualRequiredTaskCount',
+  'countManualRequiredTasks',
+  'handleDeleteTaskWorker',
+  'countBucket',
+  'startTime',
+  'endTime',
+]) {
+  if (!cleanupIndex.includes(evidence)) {
+    dev12Errors.push(`cleanup/index evidence: ${evidence}`)
+  }
+}
+
+// Check that both workers are wired in both trigger paths
+if (!cleanupIndex.includes("trigger: 'deleteTaskWorker'") ||
+    !cleanupIndex.includes("trigger: 'dailyCleanup'")) {
+  dev12Errors.push('cleanup/index: trigger context in summary')
+}
+
+// Check backend-check.js has security patterns
+const backendCheck = fs.readFileSync(
+  path.join(root, 'scripts', 'backend-check.js'),
+  'utf8',
+)
+for (const evidence of [
+  "OPENID string literal",
+  '_openid in response construction',
+  'securityPatterns',
+  'requireResponseContext',
+]) {
+  if (!backendCheck.includes(evidence)) {
+    dev12Errors.push(`backend-check security evidence: ${evidence}`)
+  }
+}
+
+// Check backend-check.js no longer has stale temporary exceptions
+// (verify note/index.js and photo/index.js exceptions are documented)
+if (backendCheck.includes("path.join('cloudfunctions', 'note', 'index.js')")) {
+  dev12Errors.push('backend-check: stale note/index.js temporary exception')
+}
+
+// Check backend-log-audit.js key functions and patterns exist
+const logAuditSource = fs.readFileSync(
+  path.join(root, 'scripts', 'backend-log-audit.js'),
+  'utf8',
+)
+for (const evidence of [
+  'extractLogFields',
+  'extractFieldNames',
+  'ALLOWED_FIELDS',
+  'logger',
+]) {
+  if (!logAuditSource.includes(evidence)) {
+    dev12Errors.push(`backend-log-audit missing: ${evidence}`)
+  }
+}
+
+// Check backend-task-inspect.js and backend-task-retry.js key patterns
+for (const [script, evidences] of [
+  ['backend-task-inspect', ['taskIdHash', 'safeTaskProjection', 'SAFE_ENV_PATTERN', 'aggregate']],
+  ['backend-task-retry', ['taskIdHash', 'SAFE_ENV_PATTERN', 'MANUAL_REQUIRED', 'allManualRequired']],
+]) {
+  const source = fs.readFileSync(
+    path.join(root, 'scripts', `${script}.js`),
+    'utf8',
+  )
+  for (const evidence of evidences) {
+    if (!source.includes(evidence)) {
+      dev12Errors.push(`${script} missing: ${evidence}`)
+    }
+  }
+}
+
+// Verify test files exist
+for (const relative of [
+  path.join('test', 'backend', 'task-lease.test.js'),
+  path.join('test', 'backend', 'cleanup-orchestration.test.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev12Errors.push(`test artifact: ${relative}`)
+  }
+}
+
+if (dev12Errors.length) {
+  process.stderr.write(
+    `DEV-12 audit failed:\n${dev12Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-12 audit manifest passed (BE-24, BE-25, CLN, COM-10..COM-12 static scope).\n',
+)

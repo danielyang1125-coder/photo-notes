@@ -1,27 +1,29 @@
 'use strict'
 
 const { withTransactionRetry } = require('./lib/shared/transaction')
+const {
+  LEASE_TTL_MS,
+  LEASE_RENEW_INTERVAL_MS,
+  MAX_RETRIES,
+  MAX_DAYS_SINCE_APPLIED,
+  DISPATCHABLE_STATUSES,
+  acquireTasks,
+  renewLease,
+  releaseLease,
+  failTask,
+  calculateBackoff,
+  toDate,
+} = require('./task-lease')
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants (task-lease re-exports + worker-specific)
 // ---------------------------------------------------------------------------
-const LEASE_TTL_MS = 10 * 60 * 1000 // 10 minutes
-const MAX_RETRIES = 10
-const MAX_DAYS_SINCE_APPLIED = 7
 const DEFAULT_BATCH_SIZE = 10
 const TASK_TYPE = 'ACCOUNT_DELETION'
-
-const DISPATCHABLE_STATUSES = ['PENDING', 'RETRYING']
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function toDate(value) {
-  if (!value) return null
-  const d = value instanceof Date ? value : new Date(value)
-  return Number.isFinite(d.getTime()) ? d : null
-}
-
 function defaultStageCursor() {
   return {
     storage_photos_cursor: null,
@@ -51,66 +53,7 @@ function createAccountDeleteWorker(deps) {
   } = deps
 
   const _ = db.command
-
-  // -----------------------------------------------------------------------
-  // Acquire dispatchable tasks with lease
-  // -----------------------------------------------------------------------
-  async function acquireTasks(timestamp) {
-    const ts = timestamp instanceof Date ? timestamp : new Date(timestamp)
-    const tasksCol = db.collection('deletion_tasks')
-
-    // Query 1: PENDING / RETRYING where next_retry_at is ready
-    const condition1 = {
-      type: TASK_TYPE,
-      status: _.in(DISPATCHABLE_STATUSES),
-      next_retry_at: _.or([_.eq(null), _.lte(ts)]),
-    }
-    const q1 = await tasksCol.where(condition1).limit(batchSize).get()
-    const candidates1 = Array.isArray(q1.data) ? q1.data : []
-
-    // Query 2: Expired PROCESSING leases
-    const condition2 = {
-      type: TASK_TYPE,
-      status: 'PROCESSING',
-      lease_expire_at: _.and([_.neq(null), _.lt(ts)]),
-    }
-    const q2 = await tasksCol.where(condition2).limit(batchSize).get()
-    const candidates2 = Array.isArray(q2.data) ? q2.data : []
-
-    // Deduplicate by _id
-    const seen = new Set()
-    const candidates = []
-    for (const t of [...candidates1, ...candidates2]) {
-      if (!seen.has(t._id)) {
-        seen.add(t._id)
-        candidates.push(t)
-      }
-    }
-
-    if (candidates.length === 0) return []
-
-    const leaseExpireAt = new Date(ts.getTime() + LEASE_TTL_MS)
-    const results = await Promise.allSettled(
-      candidates.map(async (task) => {
-        const leaseToken = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-        const updateResult = await tasksCol.where({ _id: task._id }).update({
-          data: {
-            status: 'PROCESSING',
-            lease_token: leaseToken,
-            lease_expire_at: leaseExpireAt,
-            updated_at: ts,
-          },
-        })
-        return updateResult.stats && updateResult.stats.updated > 0
-          ? { ...task, _lease_token: leaseToken }
-          : null
-      }),
-    )
-
-    return results
-      .filter((r) => r.status === 'fulfilled' && r.value !== null)
-      .map((r) => r.value)
-  }
+  let lastLeaseRenewal = null
 
   // -----------------------------------------------------------------------
   // Re-read task to get latest state
@@ -126,6 +69,23 @@ function createAccountDeleteWorker(deps) {
     } catch (_) {
       return task
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Renew lease if enough time has passed since last renewal
+  // -----------------------------------------------------------------------
+  async function maybeRenewLease(task, timestamp) {
+    const ts = timestamp instanceof Date ? timestamp : new Date(timestamp)
+    const nowMs = ts.getTime()
+    const lastMs = lastLeaseRenewal ? lastLeaseRenewal.getTime() : 0
+    if (nowMs - lastMs >= LEASE_RENEW_INTERVAL_MS) {
+      const renewed = await renewLease({ db, task, now: ts })
+      if (renewed) {
+        lastLeaseRenewal = ts
+      }
+      return renewed
+    }
+    return true // still within interval, no renewal needed
   }
 
   // -----------------------------------------------------------------------
@@ -153,7 +113,6 @@ function createAccountDeleteWorker(deps) {
     const photos = Array.isArray(result.data) ? result.data : []
 
     if (photos.length === 0) {
-      // All photos processed
       await db
         .collection('deletion_tasks')
         .doc(task._id)
@@ -188,7 +147,6 @@ function createAccountDeleteWorker(deps) {
       }
     }
 
-    // Advance cursor
     const newCursor = {
       ...cursor,
       storage_photos_cursor: photos[photos.length - 1]._id,
@@ -200,19 +158,12 @@ function createAccountDeleteWorker(deps) {
 
     // Release lease for next batch if not done
     if (!newCursor.storage_done) {
+      await releaseLease({ db, task, now: ts })
+      // Also persist new cursor
       await db
         .collection('deletion_tasks')
         .doc(task._id)
-        .update({
-          data: {
-            status: 'PENDING',
-            lease_token: null,
-            lease_expire_at: null,
-            next_retry_at: null,
-            stage_cursor: newCursor,
-            updated_at: ts,
-          },
-        })
+        .update({ data: { stage_cursor: newCursor, updated_at: ts } })
     } else {
       await db
         .collection('deletion_tasks')
@@ -300,18 +251,7 @@ function createAccountDeleteWorker(deps) {
 
     // Release lease if not done
     if (!done) {
-      await db
-        .collection('deletion_tasks')
-        .doc(task._id)
-        .update({
-          data: {
-            status: 'PENDING',
-            lease_token: null,
-            lease_expire_at: null,
-            next_retry_at: null,
-            updated_at: ts,
-          },
-        })
+      await releaseLease({ db, task, now: ts })
     }
 
     return { deleted, done }
@@ -328,6 +268,7 @@ function createAccountDeleteWorker(deps) {
       results.notes = await batchDeleteCollection(
         task, 'notes', 'notes_cursor', 'notes_done', null, timestamp,
       )
+      await maybeRenewLease(task, timestamp)
     }
 
     // Photo_tags
@@ -335,6 +276,7 @@ function createAccountDeleteWorker(deps) {
       results.photo_tags = await batchDeleteCollection(
         task, 'photo_tags', 'photo_tags_cursor', 'photo_tags_done', null, timestamp,
       )
+      await maybeRenewLease(task, timestamp)
     }
 
     // Tags
@@ -342,6 +284,7 @@ function createAccountDeleteWorker(deps) {
       results.tags = await batchDeleteCollection(
         task, 'tags', 'tags_cursor', 'tags_done', null, timestamp,
       )
+      await maybeRenewLease(task, timestamp)
     }
 
     const allDone =
@@ -375,6 +318,7 @@ function createAccountDeleteWorker(deps) {
       results.photos = await batchDeleteCollection(
         task, 'photos', 'photos_cursor', 'photos_done', null, timestamp,
       )
+      await maybeRenewLease(task, timestamp)
     }
 
     // Upload_attempts
@@ -383,6 +327,7 @@ function createAccountDeleteWorker(deps) {
         task, 'upload_attempts', 'upload_attempts_cursor', 'upload_attempts_done',
         null, timestamp,
       )
+      await maybeRenewLease(task, timestamp)
     }
 
     const allDone = results.photos?.done && results.upload_attempts?.done
@@ -445,79 +390,27 @@ function createAccountDeleteWorker(deps) {
   }
 
   // -----------------------------------------------------------------------
-  // Error handling: RETRYING or MANUAL_REQUIRED
-  // -----------------------------------------------------------------------
-  async function failTask(task, error, timestamp) {
-    const ts = timestamp instanceof Date ? timestamp : new Date(timestamp)
-
-    const fresh = await refreshTask(task)
-    const current = fresh || task
-
-    const retryCount = (current.retry_count || 0) + 1
-    const appliedAt = toDate(current.applied_at)
-    const daysSinceApplied = appliedAt
-      ? (ts.getTime() - appliedAt.getTime()) / 86400000
-      : 0
-
-    const safeCode =
-      (error && (error.code || error.safeErrorCode)) || 'INTERNAL_ERROR'
-
-    if (
-      retryCount >= MAX_RETRIES ||
-      daysSinceApplied >= MAX_DAYS_SINCE_APPLIED
-    ) {
-      await db
-        .collection('deletion_tasks')
-        .doc(task._id)
-        .update({
-          data: {
-            status: 'MANUAL_REQUIRED',
-            lease_token: null,
-            lease_expire_at: null,
-            retry_count: retryCount,
-            last_error: safeCode,
-            last_error_at: ts,
-            updated_at: ts,
-          },
-        })
-    } else {
-      const backoffMs = Math.min(
-        60000 * Math.pow(2, retryCount),
-        86400000,
-      )
-      const nextRetryAt = new Date(ts.getTime() + backoffMs)
-
-      await db
-        .collection('deletion_tasks')
-        .doc(task._id)
-        .update({
-          data: {
-            status: 'RETRYING',
-            lease_token: null,
-            lease_expire_at: null,
-            retry_count: retryCount,
-            next_retry_at: nextRetryAt,
-            last_error: safeCode,
-            last_error_at: ts,
-            updated_at: ts,
-          },
-        })
-    }
-  }
-
-  // -----------------------------------------------------------------------
   // Main run method
   // -----------------------------------------------------------------------
   async function run() {
     const timestamp = now()
     const ts = timestamp instanceof Date ? timestamp : new Date(timestamp)
 
-    const tasks = await acquireTasks(ts)
+    // Reset lease renewal tracker for this run
+    lastLeaseRenewal = null
+
+    const tasks = await acquireTasks({
+      db,
+      type: TASK_TYPE,
+      now: ts,
+      batchSize,
+    })
 
     const summary = {
       acquired: tasks.length,
       succeeded: 0,
       failed: 0,
+      manualRequired: 0,
       details: [],
     }
 
@@ -574,7 +467,18 @@ function createAccountDeleteWorker(deps) {
       } catch (err) {
         summary.failed++
         detail.error = (err && err.code) || 'INTERNAL_ERROR'
-        await failTask(task, err, ts)
+        await failTask({
+          db,
+          task,
+          error: err,
+          now: ts,
+          refreshFn: refreshTask,
+        })
+        // Track MANUAL_REQUIRED escalation
+        const updated = await refreshTask(task)
+        if (updated && updated.status === 'MANUAL_REQUIRED') {
+          summary.manualRequired++
+        }
       }
 
       summary.details.push(detail)
@@ -588,7 +492,10 @@ function createAccountDeleteWorker(deps) {
 
 module.exports = {
   LEASE_TTL_MS,
+  LEASE_RENEW_INTERVAL_MS,
   MAX_RETRIES,
   MAX_DAYS_SINCE_APPLIED,
+  DISPATCHABLE_STATUSES,
+  calculateBackoff,
   createAccountDeleteWorker,
 }
