@@ -31,6 +31,7 @@ const EXPECTED_INDEXES = [
   ['upload_attempts', 'attempt_task_unique', { _openid: 1, task_id: 1 }, true],
   ['upload_attempts', 'attempt_expire_idx', { status: 1, expires_at: 1 }, false],
   ['upload_attempts', 'attempt_lease_idx', { status: 1, confirm_lease_expire_at: 1 }, false],
+  ['upload_attempts', 'attempt_cleanup_cursor_idx', { status: 1, _id: 1 }, false],
   ['deletion_tasks', 'delete_task_unique', { _openid: 1, task_key: 1 }, true],
   ['deletion_tasks', 'delete_dispatch_idx', { type: 1, status: 1, next_retry_at: 1 }, false],
   ['deletion_tasks', 'delete_lease_idx', { type: 1, status: 1, lease_expire_at: 1 }, false],

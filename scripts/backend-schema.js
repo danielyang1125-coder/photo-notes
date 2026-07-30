@@ -121,6 +121,10 @@ const COLLECTIONS = Object.freeze([
         name: 'attempt_lease_idx',
         keys: { status: 1, confirm_lease_expire_at: 1 },
       },
+      {
+        name: 'attempt_cleanup_cursor_idx',
+        keys: { status: 1, _id: 1 },
+      },
     ],
   },
   {

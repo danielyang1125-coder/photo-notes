@@ -4,9 +4,25 @@ const db = cloud.database()
 const _ = db.command
 const { createTimerMain } = require('./lib/shared/router')
 const { createSecurityLogger } = require('./lib/shared/security-log')
+const {
+  createCloudUploadCleanupRepository,
+  createUploadCompensationService,
+} = require('./upload-compensation')
 const logger = createSecurityLogger()
 
 const BATCH_SIZE = 100
+function currentEnvironmentId() {
+  const context = cloud.getWXContext()
+  return context && typeof context.ENV === 'string' ? context.ENV : ''
+}
+const uploadCompensation = createUploadCompensationService({
+  deleteFiles: (fileList) => cloud.deleteFile({ fileList }),
+  environmentId: currentEnvironmentId,
+  repository: createCloudUploadCleanupRepository({
+    command: _,
+    db,
+  }),
+})
 
 // ============================================================
 // 定时触发器入口：每日 03:00 执行
@@ -14,7 +30,20 @@ const BATCH_SIZE = 100
 async function handleCleanup() {
   const summary = {}
 
-  // 1. 重试失败的 PHOTO_DELETE 任务
+  // 1. 上传 attempt 与对象补偿
+  try {
+    const r = await uploadCompensation.run()
+    summary.uploadCompensation = r
+  } catch (_) {
+    logger.error({
+      event: 'cleanup.upload_compensation',
+      result: 'FAILURE',
+      safeErrorCode: 'INTERNAL_ERROR',
+    })
+    summary.uploadCompensation = { errorCode: 'INTERNAL_ERROR' }
+  }
+
+  // 2. 重试失败的 PHOTO_DELETE 任务
   try {
     const r = await retryFailedPhotoDeletes()
     summary.retryPhotoDeletes = r
@@ -27,7 +56,7 @@ async function handleCleanup() {
     summary.retryPhotoDeletes = { errorCode: 'INTERNAL_ERROR' }
   }
 
-  // 2. 扫描孤立 photo_tags（图片已删但关联还在）
+  // 3. 扫描孤立 photo_tags（图片已删但关联还在）
   try {
     const r = await cleanOrphanRelations()
     summary.orphanRelations = r
@@ -40,7 +69,7 @@ async function handleCleanup() {
     summary.orphanRelations = { errorCode: 'INTERNAL_ERROR' }
   }
 
-  // 3. 计数校正：tags.photo_count
+  // 4. 计数校正：tags.photo_count
   try {
     const r = await correctTagCounts()
     summary.tagCountCorrection = r
@@ -53,7 +82,7 @@ async function handleCleanup() {
     summary.tagCountCorrection = { errorCode: 'INTERNAL_ERROR' }
   }
 
-  // 4. 计数校正：photos.tag_count
+  // 5. 计数校正：photos.tag_count
   try {
     const r = await correctPhotoTagCounts()
     summary.photoTagCountCorrection = r

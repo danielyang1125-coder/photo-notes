@@ -211,6 +211,7 @@ PREPARED ───────────────────────�
 | `attempt_task_unique` | `_openid:1, task_id:1` | UNIQUE | 同一客户端上传任务只签发一个 attempt |
 | `attempt_expire_idx` | `status:1, expires_at:1` | 普通 | cleanup 过期和孤立对象清理 |
 | `attempt_lease_idx` | `status:1, confirm_lease_expire_at:1` | 普通 | 失效 confirm 租约恢复 |
+| `attempt_cleanup_cursor_idx` | `status:1, _id:1` | 普通 | 补偿任务稳定 keyset 扫描与断点续跑 |
 
 默认 `expires_at = created_at + 24h`。只有 PREPARED attempt 可到期；终态记录保留 7 天用于幂等重放，之后删除或转为不可识别统计。
 

@@ -23,7 +23,7 @@ node scripts/db-init.js --apply --env <environment-id>
 node scripts/db-init.js --apply --env <environment-id>
 ```
 
-第二次 apply 必须显示 7 个集合和 21 个索引均已存在、回填更新数为 0。
+第二次 apply 必须显示 7 个集合和 22 个索引均已存在、回填更新数为 0。
 
 ## 2. 集合、回填与唯一约束
 
@@ -50,6 +50,7 @@ node scripts/db-init.js --apply --env <environment-id>
 | 备注创建时间 DESC/ASC | 对应两个 note cursor 索引 | `PENDING` | — |
 | 备注拍摄时间 DESC/ASC | 对应两个 note cursor 索引 | `PENDING` | — |
 | attempt 到期/租约 | `attempt_expire_idx` / `attempt_lease_idx` | `PENDING` | — |
+| attempt 补偿游标 | `attempt_cleanup_cursor_idx` | `PENDING` | — |
 | 删除任务调度/租约 | `delete_dispatch_idx` / `delete_lease_idx` | `PENDING` | — |
 
 记录 explain 是否命中索引、扫描量区间和耗时区间；不得粘贴业务文档。

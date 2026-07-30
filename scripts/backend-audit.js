@@ -40,8 +40,8 @@ const infrastructureErrors = []
 if (COLLECTIONS.length !== 7) {
   infrastructureErrors.push(`collection count: expected 7, received ${COLLECTIONS.length}`)
 }
-if (flattenIndexes().length !== 21) {
-  infrastructureErrors.push(`index count: expected 21, received ${flattenIndexes().length}`)
+if (flattenIndexes().length !== 22) {
+  infrastructureErrors.push(`index count: expected 22, received ${flattenIndexes().length}`)
 }
 const uniqueIndexes = flattenIndexes()
   .filter((index) => index.unique)
@@ -241,4 +241,46 @@ if (dev04Errors.length) {
 }
 process.stdout.write(
   'DEV-04 audit manifest passed (UPL-05..UPL-16, UPL-20 static scope).\n',
+)
+
+const dev05Errors = []
+for (const relative of [
+  path.join('cloudfunctions', 'cleanup', 'upload-compensation.js'),
+  path.join('test', 'backend', 'upload-compensation.test.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev05Errors.push(`artifact: ${relative}`)
+  }
+}
+const uploadCompensation = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'cleanup', 'upload-compensation.js'),
+  'utf8',
+)
+for (const evidence of [
+  'expireAttempt',
+  'releaseExpiredLease',
+  'pending_cleaned_at',
+  'active_cleaned_at',
+  'TERMINAL_RETENTION_MS',
+  'attempt_cleanup_cursor_idx',
+  'saveCheckpoint',
+]) {
+  const source = evidence === 'attempt_cleanup_cursor_idx'
+    ? fs.readFileSync(
+      path.join(root, 'scripts', 'backend-schema.js'),
+      'utf8',
+    )
+    : uploadCompensation
+  if (!source.includes(evidence)) {
+    dev05Errors.push(`upload compensation evidence: ${evidence}`)
+  }
+}
+if (dev05Errors.length) {
+  process.stderr.write(
+    `DEV-05 audit failed:\n${dev05Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-05 audit manifest passed (UPL-21..UPL-22, CLN-03..CLN-05 static scope).\n',
 )

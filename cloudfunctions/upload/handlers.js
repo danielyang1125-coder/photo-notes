@@ -231,6 +231,7 @@ function createUploadAttemptHandlers(options) {
       pending_cloud_path: cloudPath,
       pending_file_id: null,
       promoted_file_id: null,
+      promoted_at: null,
       verified_meta: null,
       confirm_lease_token: null,
       confirm_lease_expire_at: null,
@@ -364,6 +365,7 @@ function createUploadAttemptHandlers(options) {
       await transactionAttempts.doc(attemptId).update({
         data: {
           promoted_file_id: promoted.fileId,
+          promoted_at: timestamp,
           verified_meta: promoted.metadata,
           updated_at: timestamp,
         },

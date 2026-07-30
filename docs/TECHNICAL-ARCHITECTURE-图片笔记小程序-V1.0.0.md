@@ -536,6 +536,7 @@ exports.main = async (event, context) => {
   pending_cloud_path: "uploads/pending/{random32}.bin",
   pending_file_id: null,
   promoted_file_id: null,
+  promoted_at: null,
   verified_meta: null,             // 服务端解析的 size/width/height/format/sha256
   confirm_lease_token: null,
   confirm_lease_expire_at: null,
@@ -550,9 +551,14 @@ exports.main = async (event, context) => {
 // { _openid: 1, task_id: 1 } UNIQUE
 // { status: 1, expires_at: 1 }
 // { status: 1, confirm_lease_expire_at: 1 }
+// { status: 1, _id: 1 } — cleanup 稳定 keyset 扫描
 ```
 
 `CONFIRMED/CANCELED/EXPIRED` 为终态。终态记录保留 7 天用于幂等重放；confirm 的下载、解析、审核和提升在短事务外执行，以带过期时间的租约防止并发处理，最终事务必须再次校验 attempt 状态和租约 token。
+
+上传补偿的各阶段游标保存在 `deletion_tasks` 的固定系统检查点
+`system-upload-compensation-v1` 中（`type=UPLOAD_COMPENSATION`）；该记录不属于用户删除任务，
+只保存阶段游标和更新时间，不保存 fileID。删除任务 worker 必须按自身 `type` 查询，不能处理该检查点。
 
 #### `deletion_tasks` 集合
 

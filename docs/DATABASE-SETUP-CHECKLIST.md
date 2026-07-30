@@ -75,6 +75,7 @@ apply 需要 `CLOUDBASE_SECRET_ID` 和 `CLOUDBASE_SECRET_KEY`。环境 ID、
 | `attempt_task_unique` | `_openid:1, task_id:1` | UNIQUE |
 | `attempt_expire_idx` | `status:1, expires_at:1` | 普通 |
 | `attempt_lease_idx` | `status:1, confirm_lease_expire_at:1` | 普通 |
+| `attempt_cleanup_cursor_idx` | `status:1, _id:1` | 普通 |
 
 ### `deletion_tasks`
 
@@ -128,7 +129,7 @@ apply 需要 `CLOUDBASE_SECRET_ID` 和 `CLOUDBASE_SECRET_KEY`。环境 ID、
 
 必须在 DEV-13 发布验收前完成：
 
-1. 核对 7 个集合、21 个索引及六道唯一约束。
+1. 核对 7 个集合、22 个索引及六道唯一约束。
 2. 使用 explain 验证 ALL、UNCATEGORIZED、TAG、备注四排序、attempt 和删除任务查询。
 3. 验证复合索引反向扫描能力；未验证前保留备注升降序四个索引。
 4. 执行数据库客户端全部 DENY、pending 正向上传、active 反向读写删用例。
