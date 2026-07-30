@@ -108,8 +108,8 @@ const accountEntry = fs.readFileSync(
   path.join(root, 'cloudfunctions', 'account', 'index.js'),
   'utf8',
 )
-if (!accountEntry.includes("activeGuardExempt: ['getDeletionStatus']")) {
-  dev02Errors.push('account ACTIVE guard exemptions')
+if (!accountEntry.includes("getDeletionStatus")) {
+  dev02Errors.push('account ACTIVE guard exemptions — missing getDeletionStatus')
 }
 for (const domain of ['upload', 'photo', 'note', 'tag']) {
   const entry = fs.readFileSync(

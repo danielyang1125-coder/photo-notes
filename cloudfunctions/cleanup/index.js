@@ -11,6 +11,7 @@ const {
 const { createPhotoDeleteWorker } = require('./photo-delete-worker')
 const { createOrphanCleaner } = require('./orphan-cleaner')
 const { createCountCorrector } = require('./count-corrector')
+const { createAccountDeleteWorker } = require('./account-delete-worker')
 const logger = createSecurityLogger()
 
 const BATCH_SIZE = 100
@@ -44,6 +45,13 @@ const countCorrector = createCountCorrector({
   now: () => new Date(),
 })
 
+const accountDeleteWorker = createAccountDeleteWorker({
+  db,
+  deleteFiles: (fileList) => cloud.deleteFile({ fileList }),
+  now: () => new Date(),
+  batchSize: 10,
+})
+
 // ============================================================
 // 定时触发器入口：每日 03:00 执行
 // ============================================================
@@ -74,6 +82,19 @@ async function handleCleanup() {
       safeErrorCode: 'INTERNAL_ERROR',
     })
     summary.photoDeleteWorker = { errorCode: 'INTERNAL_ERROR' }
+  }
+
+  // 2b. 账号注销任务处理
+  try {
+    const r = await accountDeleteWorker.run()
+    summary.accountDeleteWorker = r
+  } catch (_) {
+    logger.error({
+      event: 'cleanup.account_delete_worker',
+      result: 'FAILURE',
+      safeErrorCode: 'INTERNAL_ERROR',
+    })
+    summary.accountDeleteWorker = { errorCode: 'INTERNAL_ERROR' }
   }
 
   // 3. 扫描孤立 photo_tags（图片已删但关联还在）
@@ -123,8 +144,12 @@ async function pickHandler(params) {
   const event = (params && params.event) || {}
   const triggerName = event.TriggerName || ''
   if (triggerName === 'deleteTaskWorker') {
-    const result = await photoDeleteWorker.run()
-    return { code: 'SUCCESS', data: result }
+    const photoResult = await photoDeleteWorker.run()
+    const accountResult = await accountDeleteWorker.run()
+    return {
+      code: 'SUCCESS',
+      data: { photoDeleteWorker: photoResult, accountDeleteWorker: accountResult },
+    }
   }
   return handleCleanup()
 }
