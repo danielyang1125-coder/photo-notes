@@ -2,9 +2,23 @@
 
 > 文档用途：供 AI Agent 按依赖顺序持续实现、测试和验收后端功能。  
 > 版本：V1.0.0  
-> 编制日期：2026-07-29  
-> 当前基线：后端审计 27 个任务包中 0 个完全完成，134 个技术检查项中 8 个完全完成。  
+> 编制日期：2026-07-29（2026-07-30 修订）  
+> 初始审计基线：27 个任务包中 0 个完全完成，134 个检查项中 8 个完成。  
+> 当前实施进度：以第 10 节进度表和最新 `backend:audit` 输出为准。  
 > 目标：完成产品 F-001、F-004～F-019 对应的后端能力，并关闭审计中的全部 P0/P1 缺口。
+
+## 0. 项目定位与设计原则
+
+本项目是以个人使用为主的微信小程序，V1.0.0 的首要目标是：
+
+1. 数据不越权、不重复计费、不因普通失败产生孤立记录。
+2. 图片、备注和标签的核心流程简单、稳定、可恢复。
+3. 优先使用微信云开发原生能力，不建设独立运维平台。
+4. 不为尚未确认的多用户规模和高并发场景提前建设复杂基础设施。
+5. 安全设计以服务端身份、资源归属、存储权限和可信上传为核心。
+6. 可观测性应支持个人开发者排障，不追求完整企业级审计体系。
+
+若后续转为公开、多用户运营产品，再在 V1.1 或 V2 增加完整审核、告警、数据校正、灰度发布和高并发能力。
 
 ## 1. 权威来源与冲突处理
 
@@ -29,13 +43,24 @@
 满足以下条件才可认为后端整体开发完成：
 
 - 6 个业务云函数和 1 个 cleanup 云函数均实现目标 type、统一身份/响应/错误边界。
-- 7 个集合、全部唯一索引和 Keyset 查询索引在开发环境验证通过。
+- 7 个集合、全部唯一索引和 Keyset 查询索引在开发环境通过。
 - 客户端不能直读写数据库、不能自定 active 路径、不能覆盖或删除 active 对象。
-- 上传 prepare/confirm/cancel、图片异步删除、标签关系、备注计数和注销清理均满足事务、幂等、并发及失败恢复要求。
+- 上传 prepare/confirm/cancel、图片异步删除、标签关系和注销清理均满足事务、幂等、并发及失败恢复要求。
 - ALL、UNCATEGORIZED、TAG 图片列表和四种备注排序全部使用绑定参数的 Keyset Cursor，不出现 `.skip()`。
 - 所有图片业务读写均限制 `_openid + status=ACTIVE`；删除申请提交后立即全局隐藏。
 - P0/P1 功能具备自动化测试或明确的云环境验收证据。
 - 审计重新执行后，P0/P1 项不得为 `PARTIAL`、`NOT_IMPLEMENTED`、`DEVIATED` 或无说明的 `UNVERIFIED`。
+
+## 2B. V1.0.0 非目标
+
+- 不建设独立管理后台。
+- 不支持多人共享相册。
+- 不支持跨设备离线同步协议。
+- 不保证分页快照一致性。
+- 不提供图片回收站。
+- 不建设完整企业级安全审计平台。
+- 不承诺平台层微信身份解绑。
+- 不为万级并发提前优化。
 
 ## 3. 已锁定的实现方案
 
@@ -77,18 +102,41 @@
 | `CURSOR_PAGINATION_REQUIRED` | 强制 cursor | 发布最终值为 `true` |
 | `ASYNC_PHOTO_DELETE_ENABLED` | 强制异步删除 | 发布最终值为 `true` |
 | `PUBLIC_RESOURCE_ERROR_MASKING` | 统一存在性保护 | 发布最终值为 `true` |
-| `CONTENT_REVIEW_ENABLED` | 内容审核开关 | 生产必须为 `true`；审核不可用时 fail-closed |
+| `DEPLOYMENT_MODE` | 部署模式 | `PRIVATE_SINGLE_USER` 或 `PUBLIC`；影响审核策略 |
+| `CONTENT_REVIEW_ENABLED` | 内容审核开关 | PUBLIC 模式必须为 `true`，审核不可用时 fail-closed；PRIVATE_SINGLE_USER 模式允许根据实际发布要求关闭 |
+
+部署模式规则：
+
+- `PUBLIC` 模式下 `CONTENT_REVIEW_ENABLED` 必须为 `true`，审核不可用时 fail-closed。
+- `PRIVATE_SINGLE_USER` 模式允许根据实际发布要求关闭审核。
+- 无论是否开启内容审核，图片类型、尺寸、像素、文件大小和损坏校验都必须执行。
+- 从 `PRIVATE_SINGLE_USER` 切换到 `PUBLIC` 前必须完成内容审核云环境验收。
+
+最终策略仍须满足微信小程序实际发布和合规要求。
 
 仓库不得包含生产密钥或默认生产环境 ID。初始化和验收脚本必须要求显式传入环境。
 
 ### 3.4 数据与状态机
 
-- `upload_attempts`：`PREPARED → CONFIRMED | CANCELED | EXPIRED`；终态不复活，保留 7 天。
-- `photos.status`：`ACTIVE → DELETING`；不得恢复 ACTIVE。
-- `deletion_tasks.status`：`PENDING → PROCESSING ↔ RETRYING → COMPLETED`。
-- 上传最终事务：读取 PREPARED attempt + ACTIVE user，校验租约/配额，原子创建 ACTIVE photo、增加 used_bytes、attempt→CONFIRMED。
-- 图片删除最终事务：确认 DELETING photo，删除 photo、精确扣减一次 used_bytes、任务→COMPLETED。
-- 账号注销顺序：对象 → notes → photo_tags → tags → photos → 空间/用户数据 → 身份解绑；任一失败保持 DELETING。
+**upload_attempts**：`PREPARED → CONFIRMED | CANCELED | EXPIRED`；终态不复活，保留 7 天。
+
+**photos.status**：`ACTIVE → DELETING`；不得恢复 ACTIVE。
+
+**deletion_tasks.status**：`PENDING → PROCESSING ↔ RETRYING → COMPLETED`；新增 `MANUAL_REQUIRED` 终端态。可恢复错误使用指数退避重试；连续失败达到 10 次或持续超过 7 天后进入 `MANUAL_REQUIRED`。`MANUAL_REQUIRED` 不自动恢复图片可见，也不自动释放空间。提供只读检查和显式重驱脚本，不建设管理后台。
+
+**上传最终事务**：读取 PREPARED attempt + ACTIVE user，校验租约/配额，原子创建 ACTIVE photo、增加 used_bytes、attempt→CONFIRMED。
+
+**图片删除最终事务**：确认 DELETING photo，删除 photo、精确扣减一次 used_bytes、任务→COMPLETED。V1 不上传租约 fencing token 机制——现有唯一索引已能防住重复创建 photo，单用户低频操作下旧 worker 超时后仍提交最终事务的极端场景几乎不会发生。
+
+**账号注销状态机**：`ACTIVE → DELETING → DELETED`。
+
+- requestDeletion 提交后，用户立即进入 DELETING，普通业务全部拒绝。
+- 后台任务清理该用户的存储对象和全部业务数据。
+- 清理完成后删除 users 中的业务用户记录。
+- deletion_tasks 中只保留不含 OPENID、资源 ID 和业务内容的匿名注销回执，保留 7 天后自动删除。
+- getDeletionStatus 在用户记录仍存在时返回权威状态。
+- 用户记录已删除且无法匹配匿名回执时，USER_NOT_FOUND 视为注销完成。
+- V1 不声明可以解绑或删除微信平台身份，只清理本应用持有的数据。
 
 ## 4. 开发路线图
 
@@ -100,10 +148,10 @@
 | M3 | DEV-03 上传 attempt；DEV-04 可信 confirm | DEV-02 | BE-06～09 | 幂等、配额、真实性、取消竞态通过 |
 | M4 | DEV-05 上传补偿与清理 | DEV-03～04 | BE-10 | 过期/孤立对象任务可续跑 |
 | M5 | DEV-06 图片查询与详情 | DEV-01～04 | BE-11～13 | 三类 cursor、ACTIVE 隔离、受控 URL 通过 |
-| M6 | DEV-07 异步图片删除 | DEV-05～06 | BE-14～15 | 立即隐藏、四阶段重试、精确释放空间通过 |
+| M6 | DEV-07 异步图片删除 | DEV-05～06 | BE-14～15 | 立即隐藏、三阶段重试、精确释放空间通过 |
 | M7 | DEV-08 备注；DEV-09 标签核心 | DEV-01～02、DEV-06 | BE-16～20 | 备注并发、标签唯一/计数/部分结果通过 |
-| M8 | DEV-10 引用清理与计数校正 | DEV-07～09 | BE-21 | 孤立引用和派生计数可全量续跑 |
-| M9 | DEV-11 账号注销 | DEV-07～10 | BE-22～23 | 完整级联、失败重试、最后解绑通过 |
+| M8 | DEV-10 引用清理与计数校正 | DEV-07～09 | BE-21 | 孤立引用和派生计数可全量续跑；P2 日常维护 |
+| M9 | DEV-11 账号注销 | DEV-07～10 | BE-22～23 | 完整级联、失败重试、数据清理通过 |
 | M10 | DEV-12 cleanup 编排与安全收口 | DEV-05、07、10、11 | BE-24～25 | 双触发器、租约、游标、脱敏日志通过 |
 | M11 | DEV-13 契约切换、验收与发布 | DEV-00～12 | BE-26～27 | 自动化、云验收、重审和发布门禁全部通过 |
 
@@ -121,7 +169,7 @@
 | DEV-07 | F-012 | BE-14～BE-15 | PHD、API-06 |
 | DEV-08 | F-007～F-011 | BE-16～BE-17 | NTE、API-05 |
 | DEV-09 | F-016～F-019 | BE-18～BE-20 | TAG-01～TAG-15、API-08 |
-| DEV-10 | 标签/未分类一致性 | BE-21 | TAG-16、CLN-08～CLN-09 |
+| DEV-10 | P2 标签/未分类一致性 | BE-21 | TAG-16、CLN-08～CLN-09 |
 | DEV-11 | F-015 | BE-22～BE-23 | ACC、CLN-07 |
 | DEV-12 | 全局安全、补偿与可观测性 | BE-24～BE-25 | CLN、COM-10～COM-12 |
 | DEV-13 | 发布与整体验收 | BE-26～BE-27 | API、全部 P0/P1 |
@@ -267,9 +315,30 @@
 - detail 只查询本人 ACTIVE photo，只返回公开 photo 字段、预览 URL、备注和最多 5 个标签。
 - 成功 TAG 筛选更新 last_used_at；读取路径不直接删除脏数据。
 
+**接口输出**
+
+```text
+{ list, nextCursor, hasMore }
+```
+
+不返回精确 `total`。
+
+**分页一致性承诺**
+
+- 在排序字段不变化且数据集合稳定时，跨页结果无重复、无遗漏。
+- 翻页期间新增的更高排序数据不要求出现在当前分页会话中，用户刷新后可见。
+- 翻页期间被删除或变为 DELETING 的数据允许从后续页面消失。
+- Cursor 不提供数据库快照语义。
+
+**简化决策**
+
+- TAG 脏关系扫描设置最大候选数量，例如单次最多扫描 `pageSize × 5`。
+- 达到扫描上限仍未填满页面时允许返回短页。
+- HMAC Cursor 已完成，不在 V1 扩展密钥轮换体系。
+
 **测试与验收**
 
-- 同时间戳、跨页并发插入/删除无重复；静态扫描不出现 `.skip()`。
+- 同时间戳、跨页数据集合稳定时无重复；静态扫描不出现 `.skip()`。
 - cursor 篡改、跨 scope/tag/sort 复用返回 `INVALID_CURSOR`。
 - DELETING/他人/随机图片统一不可见，响应无 fileID/_openid。
 
@@ -277,20 +346,21 @@
 
 **目标**
 
-实现“申请即隐藏、后台可恢复、空间只释放一次”的永久删除。
+实现”申请即隐藏、后台可恢复、空间只释放一次”的永久删除。
 
 **实现**
 
 - `photo/delete` 短事务：本人 ACTIVE→DELETING，同时创建或读取唯一 PHOTO_DELETE 任务。
 - `getDeleteStatus` 只返回 taskId、photoId、公开状态和时间。
-- worker 使用短租约推进：
+- worker 使用短租约推进三个阶段：
   1. `STORAGE_DELETE`
-  2. `NOTES_CLEANUP`
-  3. `PHOTO_TAGS_CLEANUP`
-  4. `PHOTO_FINALIZE`
-- 每批清理和 stage_cursor 前移同事务；关系按实际删除数递减 tag.photo_count。
+  2. `RELATED_DATA_CLEANUP`（notes 和 photo_tags 分批清理，归于同一逻辑阶段）
+  3. `PHOTO_FINALIZE`
+- task cursor 记录当前子类型和最后处理键值。
 - finalize 原子删除 photo、精确扣减 used_bytes、任务 COMPLETED；重放不得重复扣空间。
 - 失败记录安全码并进入 RETRYING，不恢复图片可见。
+- 增加 `MANUAL_REQUIRED` 状态：连续失败 10 次或持续超过 7 天进入，不自动恢复。
+- 如果真实数据量很小，允许一个 worker 调用连续推进多个阶段。
 
 **测试与验收**
 
@@ -302,20 +372,27 @@
 
 **目标**
 
-完成备注 CRUD、计数一致性、四种稳定排序和反向定位数据。
+完成备注 CRUD、四种稳定排序和反向定位数据。
 
 **实现**
 
-- add 校验本人 ACTIVE photo、1～1000 code point、文本审核；note 创建和 note_count+1 同事务。
+- add 校验本人 ACTIVE photo、1～1000 code point、文本审核；note 创建同事务。
 - update 强制 updatedAt；条件必须含 `_id+_openid+updated_at`。冲突只返回安全所需字段，不按裸 doc(id) 读取。
-- delete 与 note_count 更新同事务；重放不减为负数。
+- delete 与对应 note 删除同事务；重放不减为负数。
 - list 支持两字段×两方向 Keyset Cursor，同向 `_id` 作为第二键。
 - 候选 note 批量复核本人 ACTIVE photo，跳过失效项并继续扫描；批量生成临时缩略图。
+
+**简化决策**
+
+- V1 不在 photo 中维护 `note_count`。
+- 图片详情直接查询备注，备注列表不依赖 `note_count`。
+- 删除 `note_count` 后，备注写事务不再需要同步更新 photo 表，减少事务复杂度。
+- 暂保留现有四个备注排序索引，不做缩减。若后续在真实 CloudBase 环境验证复合索引反向扫描可用，可考虑合并为两个索引。V1 不将此索引优化作为必须项。
 
 **测试与验收**
 
 - 双设备并发更新只有一个成功，覆盖保存再次冲突仍拒绝。
-- 写入任一点失败不产生 note/count 半提交。
+- 写入任一点失败不产生 note 半提交。
 - 四种排序同时间戳分页无重复遗漏，cursor 不可跨排序复用。
 
 ### DEV-09 标签 CRUD、单图关系与批量关系
@@ -333,7 +410,14 @@
 - getPhotoTags/updatePhotoTags 必须先校验本人 ACTIVE photo。
 - updatePhotoTags：数组分别去重、拒绝交叉；事务内读取当前集合并写实际差异，维护双方计数。
 - batchAdd：全部 tagId 先整体校验；1～20 图逐图事务，返回 success/invalid/limitExceeded 三类计数；一个图片失败不回滚其他图片。
-- requestId 必填且只记录 HMAC 摘要；幂等依赖实际差异+唯一关系索引。
+
+**简化决策**
+
+- `tag.photo_count` 允许最终一致，或在确有展示需求时按需统计。
+- batchAdd 仅保证状态幂等（关系唯一索引和事务差异计算保证重复请求不会重复建立关系或增加计数），不保证重复请求返回与首次完全相同的逐图计数。
+- 前端超时重试后，应以重新读取图片标签结果作为最终状态。
+- 标签总数最多 100，V1 直接一次查询，不增加标签分页 Cursor。
+- requestId 用于日志关联和客户端重试识别，不落库。
 
 **测试与验收**
 
@@ -346,39 +430,54 @@
 
 **目标**
 
-为运行期异常提供可续跑的最终一致性修复。
+为运行期异常提供可续跑的最终一致性修复。从发布主链路降为 P2 日常维护能力。
 
 **实现**
 
-- 清理引用非 ACTIVE/不存在 photo 的 note/photo_tags，以及引用不存在 tag 的 photo_tags。
-- 按用户/稳定键分页聚合 `photos.tag_count` 与 `tags.photo_count`，只修正不一致项。
+- 清理引用非 ACTIVE/不存在 photo 的 photo_tags，以及引用不存在 tag 的 photo_tags（notes 不再维护 note_count，因此不需要对应校正）。
+- 按用户/稳定键分页聚合 `photos.tag_count`，只修正不一致项。如果保留 `tags.photo_count`，则一并修复。
 - photo.tag_count 限制 0～5，tag.photo_count 不得为负。
 - 每次执行有批次、最大扫描轮次和持久 cursor；日志仅记录摘要与计数区间。
+- 默认 dry-run，写入必须显式 apply。
+- 日常不高频运行，只由 dailyCleanup 或人工调用。
 
 **测试与验收**
 
-- 构造孤立 note/relation 和错误计数，重复执行后收敛且无越用户修改。
+- 构造孤立 relation 和错误计数，重复执行后收敛且无越用户修改。
 - 中途退出可续跑，不永远只处理前 100 条。
 
 ### DEV-11 注销申请与全量执行器
 
 **目标**
 
-完成产品要求的立即失效、全量清理、失败重试和最终身份解绑。
+完成产品要求的立即失效、全量清理、失败重试和最终数据清除。
 
 **实现**
 
 - requestDeletion 要求 ACTIVE 和精确确认文字；短事务 user→DELETING 并创建/读取唯一任务。
-- 重复请求返回原任务；getDeletionStatus 对 DELETING/DELETED 开放且只返回公开状态。
-- ACCOUNT_DELETION 分阶段分页处理对象、notes、photo_tags、tags、photos、空间/用户数据、身份解绑。
+- 重复请求返回原任务；getDeletionStatus 在用户记录仍存在时返回权威状态。
+- ACCOUNT_DELETION 分阶段分页处理：
+  1. `STORAGE_CLEANUP`
+  2. `RELATED_DATA_CLEANUP`
+  3. `PRIMARY_DATA_CLEANUP`
+  4. `USER_FINALIZE`
 - 每阶段幂等、带游标/租约；任一失败 RETRYING 且 user 保持 DELETING。
-- 身份解绑必须是最后阶段；若目标 CloudBase 不提供独立解绑 API，则最终动作定义为删除/匿名化应用用户记录及全部业务映射，并在云验收文档记录平台能力结论，禁止伪造成功。
+- 清理完成后删除 users 中的业务用户记录。deletion_tasks 中只保留不含 OPENID、资源 ID 和业务内容的匿名注销回执，保留 7 天后自动删除。
+- USER_NOT_FOUND 视为注销已完成的公开结果。
+- 不对无法控制的平台身份解绑能力作成功承诺。CloudBase 是否支持所需的平台身份操作应在开发前置阶段确认。
+
+**验收条件**
+
+- users、photos、notes、tags、photo_tags、upload_attempts 中不存在该用户数据。
+- deletion_tasks 只允许存在不含 OPENID 的匿名注销回执。
+- 云存储中不存在该用户关联对象。
+- USER_NOT_FOUND 可作为注销已完成的公开结果。
 
 **测试与验收**
 
 - 状态更新/任务创建任一点失败均不产生孤立 DELETING。
 - 每阶段故障注入后能续跑；标签或关系未清完时不能 COMPLETED。
-- 完成后按 `_openid` 扫描 7 个集合和存储均无用户数据。
+- 完成后按 `_openid` 扫描 6 个集合和存储均无用户数据（不含匿名注销回执）。
 
 ### DEV-12 cleanup 编排、安全与可观测性收口
 
@@ -388,11 +487,14 @@
 
 **实现**
 
-- 根据 TriggerName 区分每 5 分钟任务推进和每日全量补偿。
+- 根据 TriggerName 区分每 5 分钟任务推进（图片删除和账号注销任务）和每日全量补偿。
 - 统一任务领取租约、续租、超时回收、批次、deadline 和 next_retry_at 退避。
 - 单处理器失败不阻断其他类型；返回安全汇总。
 - 全量扫描 `_id`、`_openid`、status 条件、原始异常、敏感日志和客户端可信字段。
-- 健康检查不得返回 OPENID、集合数量或原始 SDK 错误；仅保留受控运维结果，生产默认关闭。
+- 增加 `scripts/backend-task-inspect.js` 只读检查脚本。
+- 增加 `scripts/backend-task-retry.js` 显式重驱脚本。
+- 仅对 `MANUAL_REQUIRED` 和定时任务连续运行失败告警。
+- 不建设复杂健康检查接口。日志允许记录 taskIdHash、requestId 和安全错误码。
 
 **测试与验收**
 
@@ -414,9 +516,14 @@
   - photo/note cursor
   - photo 异步删除状态
   - batchAdd 三类结果
-- 新 schema 先部署但入口关闭；客户端适配完成后一次性启用四个 REQUIRED/ENABLED 开关。
+- 项目为零线上用户的新项目，不存在历史协议兼容问题。四个功能开关在 DEV-13 一次性全部启用：
+  1. `PUBLIC_RESOURCE_ERROR_MASKING`
+  2. `UPLOAD_ATTEMPT_REQUIRED`
+  3. `CURSOR_PAGINATION_REQUIRED`
+  4. `ASYNC_PHOTO_DELETE_ENABLED`
+- 无需逐项灰度，前端适配完成即可同步开启。
 - 开关启用后拒绝旧 confirm 元数据、page/skip 和同步删除协议。
-- 执行自动化、云权限、索引 explain、内容审核、性能、并发和故障注入验收。
+- 执行自动化、云权限、索引 explain、内容审核、并发和故障注入验收。
 - 重新运行后端审计并更新结果文档。
 
 **测试与验收**
@@ -435,13 +542,13 @@
 | upload | prepare | taskId | attemptId/cloudPath/expiresAt/photoId? |
 | upload | confirm | attemptId/fileId/shootTime/timeSource | photo/duplicated |
 | upload | cancel | attemptIds[1..20] | per-attempt results |
-| photo | list | scope/tagId?/cursor/pageSize | list/nextCursor/hasMore/total? |
+| photo | list | scope/tagId?/cursor/pageSize | list/nextCursor/hasMore |
 | photo | detail | photoId | public photo/notes/tags |
 | photo | delete | photoId | taskId/PENDING |
 | photo | getDeleteStatus | taskId | public task status/times |
 | note | add/update/delete/list | 架构 §6.3 | note 或 cursor list |
 | tag | list/create/rename/delete/getPhotoTags/updatePhotoTags/batchAddPhotoTags | 架构 §6.3 | TagSummary/计数/逐图结果 |
-| account | requestDeletion/getDeletionStatus | 确认文字或无 | 公开任务状态 |
+| account | requestDeletion/getDeletionStatus | 确认文字或无 | 公开任务状态/USER_NOT_FOUND 视为注销完成 |
 | cleanup | timer | TriggerName | 安全汇总 |
 
 所有业务响应遵循：
@@ -490,8 +597,10 @@
 - 10 并发 confirm 只创建一张 photo。
 - ALL/UNCATEGORIZED/TAG 和备注四排序无重复遗漏。
 - 图片删除各阶段、注销各阶段故障注入后最终收敛。
-- QUICK 标签 P95 ≤800ms、ALL 标签 ≤1s、TAG 20 图 ≤2s、单图标签 ≤1s、20×5 批量 ≤2s。
-- 普通接口 P95 ≤800ms、备注保存 P95 ≤1s；图片和备注首屏满足 PRD 指标。
+- 部署后在真机上走一遍核心流程（上传→浏览→备注→标签→删除），体感不卡即可。
+- 冷启动和热调用不做严格区分，不做 P95 统计。
+- 若某操作明显卡顿（>3 秒），优先排查是否有 N+1 查询或全量扫描问题。
+- 不为低频个人操作做提前优化。
 
 ### 8.4 安全与隐私门禁
 
@@ -509,8 +618,8 @@
 4. 先补失败测试或测试夹具，再实现；云环境事项写入验收清单，不用静态推测标记成功。
 5. 修改公共 `_shared` 后运行同步脚本，不直接编辑生成副本。
 6. 完成时运行语法、单测、集成模拟、禁止模式扫描；报告实际执行结果。
-7. 更新下方进度表：状态、完成日期、变更摘要、验证命令、剩余云验证、审计编号。
-8. 一个任务未满足完成门禁不得标记 DONE；可标记 BLOCKED 并给出具体外部依赖。
+7. 更新下方进度表：实现状态、云验收状态、变更摘要、验证命令、剩余云验证、审计编号。
+8. 一个任务未满足完成门禁不得标记 CODE_COMPLETE；可标记 BLOCKED 并给出具体外部依赖。
 
 建议每个任务形成独立提交，提交信息格式：
 
@@ -518,26 +627,85 @@
 backend(DEV-xx): <任务结果>
 ```
 
+## 9A. 数据保护、备份与隐私
+
+### 备份与导出
+
+- 提供个人数据导出脚本，至少包含照片元数据、备注、标签和关系。
+- 导出文件不得包含临时 URL、内部租约和安全密钥。
+- 重要版本发布前手动执行一次数据库导出。
+- 数据量极小（个人使用），导出即备份，无需定期自动备份和季度恢复演练。
+
+### EXIF 和位置隐私
+
+- 服务端只保存业务需要的 shoot_time/time_source。
+- active 图片默认剥离 GPS 等敏感 EXIF。
+- 若决定保留原始 EXIF，必须在隐私说明中明确。
+- 缩略图和审核图不得包含不必要的 EXIF。
+
+### 误删与恢复
+
+- V1 图片删除为永久删除，不提供回收站。
+- UI 必须明确提示删除后不可恢复。
+- 若后续需要回收站，应作为独立版本设计，不复用 DELETING 状态。
+
+## 9B. 资源、成本和性能边界
+
+### 上传限制
+
+- 单文件最大 20 MB。
+- 仅支持静态 JPEG/PNG。
+- 图片最大宽高 2560px。
+- 最大解码像素受服务端图片处理器限制。
+- 审核图最长边不超过 750px，最大 1 MB。
+- 单次最多选择 20 张图片。
+- 单用户默认空间 500 MB。
+
+### 云函数运行约束
+
+- confirm 的内存和超时必须覆盖 20 MB 下载及 sharp 解码。
+- 一个 confirm 请求只处理一张图片。
+- worker 在 deadline 前停止领取新批次并保存 cursor。
+- 云验收记录冷启动时间、单图处理时间和单次调用费用估算。
+
+### 日志保留与告警
+
+- 生产日志建议保留 7～30 天。
+- `MANUAL_REQUIRED` 必须能够通过 taskIdHash 和任务查询脚本定位。
+- V1 不建设完整企业级安全审计平台。
+
+### 日志允许字段
+
+- `event`、`result`、`safeErrorCode`、`duration`、`requestId`、`taskIdHash`、`resourceHash`、批次数量、`retryCount`、`stage`
+
+### 日志禁止字段
+
+- OPENID、`_openid`、fileID 和私有 URL、备注正文、标签名称、图片内容和 EXIF 原始信息、SDK 原始异常消息、环境密钥
+
 ## 10. 进度跟踪表
 
-状态仅使用 `TODO`、`IN_PROGRESS`、`BLOCKED`、`DONE`。
+**实现状态**（描述代码层面）：`TODO` → `IN_PROGRESS` → `CODE_COMPLETE` → `BLOCKED`
 
-| 任务 | 状态 | 完成日期 | 验证结果 | 剩余事项 |
-|---|---|---|---|---|
-| DEV-00 公共内核与测试骨架 | DONE | 2026-07-29 | `npm run backend:audit` 通过；83 个 JS 语法/漂移/禁止模式检查通过；22/22 单测通过 | 云函数目标运行时加载与日志样本复核并入 DEV-13 云环境验收 |
-| DEV-01 数据、索引、回填与配置 | DONE | 2026-07-29 | 离线 dry-run 通过；7 个集合/22 个索引静态清单（DEV-05 增补 attempt cleanup cursor）、幂等回填、索引漂移拒绝与双触发器测试通过；`npm run backend:audit` 通过 | 真实集合/索引创建、权限、explain、触发器和存储反向用例留待 DEV-13，模板见 `BACKEND-CLOUD-ACCEPTANCE-DEV-01.md` |
-| DEV-02 用户身份与状态隔离 | DONE | 2026-07-29 | `npm run backend:audit` 通过；88 个 JS 语法/漂移/禁止模式检查通过；36/36 单测通过；覆盖 10 并发首登、ACTIVE/DELETING/DELETED/缺失用户矩阵和安全投影 | 目标云环境 10 并发首登、云函数运行时响应及日志样本复核并入 DEV-13；已静态覆盖 USR-01～USR-06、COM-04～COM-07 |
-| DEV-03 上传 attempt 与 cancel | DONE | 2026-07-29 | `npm run backend:audit` 通过；90 个 JS 语法/漂移/禁止模式检查通过；41/41 单测通过；覆盖 10 并发 prepare、24h 签发、终态重放、逐项 cancel、归属遮蔽及 cancel/confirm 两种提交顺序 | 新协议 confirm 的租约、真实性校验和最终事务由 DEV-04 完成；目标云环境并发 prepare、复合唯一索引与存储签发路径权限复核并入 DEV-13；已静态覆盖 UPL-01～UPL-04、UPL-18～UPL-19 |
-| DEV-04 可信 confirm 与最终事务 | DONE | 2026-07-30 | `npm run backend:audit` 通过；92 个 JS 语法/漂移/禁止模式检查通过；49/49 单测通过；覆盖新协议拒旧字段、环境/路径绑定、静态 JPEG/PNG 解码、损坏/动态格式拒绝、≤750px/≤1MB 审核图、审核 fail-closed、active 随机提升与 SHA-256、租约/取消竞态、3 路配额竞争、10 次重放、事务故障后提升信息复用 | 目标云环境 fileID/存储提升、sharp Linux 运行时、内容审核违规/不可用、3/10 并发与唯一索引实测并入 DEV-13；pending/孤立 active 对象的分页补偿由 DEV-05 完成；已静态覆盖 UPL-05～UPL-16，建立 UPL-20 补偿登记 |
-| DEV-05 上传补偿与清理 | DONE | 2026-07-30 | `npm run backend:audit` 通过；94 个 JS 语法/漂移/禁止模式检查通过；54/54 单测通过；覆盖原子过期、失效租约释放、终态 pending 清理、24h 孤立 active 清理、有效 confirm/photo 保护、7 天终态保留及持久 keyset 游标续跑 | 目标云环境新增 `attempt_cleanup_cursor_idx`、pending fileID 兼容性、对象删除幂等结果和定时触发器崩溃续跑实测并入 DEV-13；已静态覆盖 UPL-21～UPL-22、CLN-03～CLN-05 |
-| DEV-06 图片查询与详情 | TODO | — | — | — |
-| DEV-07 异步图片删除 | TODO | — | — | — |
-| DEV-08 备注事务与 Cursor | TODO | — | — | — |
-| DEV-09 标签核心 | TODO | — | — | — |
-| DEV-10 引用清理与计数校正 | TODO | — | — | — |
-| DEV-11 账号注销 | TODO | — | — | — |
-| DEV-12 cleanup 与安全收口 | TODO | — | — | — |
-| DEV-13 契约切换、验收与发布 | TODO | — | — | — |
+**云验收状态**（描述云环境验证）：`NOT_VERIFIED` → `CLOUD_PASSED`
+
+本地测试通过是 `CODE_COMPLETE` 的前置条件。只有同时满足 `CODE_COMPLETE + CLOUD_PASSED` 才计入"发布完成"。
+
+| 任务 | 实现状态 | 云验收 | 备注 |
+|---|---|---|---|
+| DEV-00 公共内核与测试骨架 | CODE_COMPLETE | NOT_VERIFIED | 83 个 JS 语法/漂移/禁止模式检查通过；22/22 单测通过；云函数运行时验证并入 DEV-13 |
+| DEV-01 数据、索引、回填与配置 | CODE_COMPLETE | NOT_VERIFIED | 离线 dry-run 通过；7 个集合/22 个索引静态清单、幂等回填、索引漂移拒绝与双触发器测试通过；真实索引、权限、触发器并入 DEV-13 |
+| DEV-02 用户身份与状态隔离 | CODE_COMPLETE | NOT_VERIFIED | 88 个 JS 语法/漂移/禁止模式检查通过；36/36 单测通过；云端并发首登并入 DEV-13 |
+| DEV-03 上传 attempt 与 cancel | CODE_COMPLETE | NOT_VERIFIED | 90 个 JS 语法/漂移/禁止模式检查通过；41/41 单测通过；prepare 并发及存储权限并入 DEV-13 |
+| DEV-04 可信 confirm 与最终事务 | CODE_COMPLETE | NOT_VERIFIED | 92 个 JS 语法/漂移/禁止模式检查通过；49/49 单测通过；sharp、审核、提升实测并入 DEV-13 |
+| DEV-05 上传补偿与清理 | CODE_COMPLETE | NOT_VERIFIED | 94 个 JS 语法/漂移/禁止模式检查通过；54/54 单测通过；定时补偿实测并入 DEV-13 |
+| DEV-06 图片查询与详情 | TODO | NOT_VERIFIED | — |
+| DEV-07 异步图片删除 | TODO | NOT_VERIFIED | — |
+| DEV-08 备注事务与 Cursor | TODO | NOT_VERIFIED | — |
+| DEV-09 标签核心 | TODO | NOT_VERIFIED | — |
+| DEV-10 引用清理与计数校正 | TODO | NOT_VERIFIED | — |
+| DEV-11 账号注销 | TODO | NOT_VERIFIED | — |
+| DEV-12 cleanup 与安全收口 | TODO | NOT_VERIFIED | — |
+| DEV-13 契约切换、验收与发布 | TODO | NOT_VERIFIED | — |
 
 ## 11. 最终重新审计
 
