@@ -8,6 +8,7 @@ const {
   createCloudUploadCleanupRepository,
   createUploadCompensationService,
 } = require('./upload-compensation')
+const { createPhotoDeleteWorker } = require('./photo-delete-worker')
 const logger = createSecurityLogger()
 
 const BATCH_SIZE = 100
@@ -22,6 +23,13 @@ const uploadCompensation = createUploadCompensationService({
     command: _,
     db,
   }),
+})
+
+const photoDeleteWorker = createPhotoDeleteWorker({
+  db,
+  deleteFiles: (fileList) => cloud.deleteFile({ fileList }),
+  now: () => new Date(),
+  batchSize: 10,
 })
 
 // ============================================================
@@ -43,17 +51,17 @@ async function handleCleanup() {
     summary.uploadCompensation = { errorCode: 'INTERNAL_ERROR' }
   }
 
-  // 2. 重试失败的 PHOTO_DELETE 任务
+  // 2. 异步图片删除任务处理
   try {
-    const r = await retryFailedPhotoDeletes()
-    summary.retryPhotoDeletes = r
+    const r = await photoDeleteWorker.run()
+    summary.photoDeleteWorker = r
   } catch (_) {
     logger.error({
-      event: 'cleanup.retry_photo_deletes',
+      event: 'cleanup.photo_delete_worker',
       result: 'FAILURE',
       safeErrorCode: 'INTERNAL_ERROR',
     })
-    summary.retryPhotoDeletes = { errorCode: 'INTERNAL_ERROR' }
+    summary.photoDeleteWorker = { errorCode: 'INTERNAL_ERROR' }
   }
 
   // 3. 扫描孤立 photo_tags（图片已删但关联还在）
@@ -96,65 +104,6 @@ async function handleCleanup() {
   }
 
   return { code: 'SUCCESS', data: summary }
-}
-
-// ============================================================
-// 重试失败删除任务
-// ============================================================
-async function retryFailedPhotoDeletes() {
-  const tasks = await db.collection('deletion_tasks')
-    .where({ type: 'PHOTO_DELETE', status: 'FAILED', retry_count: _.lt(5) })
-    .limit(BATCH_SIZE)
-    .get()
-
-  let retried = 0
-  let succeeded = 0
-
-  for (const task of (tasks.data || [])) {
-    retried++
-    try {
-      if (task.failed_stage === 'STORAGE_DELETE') {
-        const photo = await db.collection('photos').doc(task.photo_id).get()
-        if (photo.data && photo.data.file_id) {
-          await cloud.deleteFile({ fileList: [photo.data.file_id] })
-        }
-      }
-
-      // DB 清理事务
-      const transaction = await db.startTransaction()
-      const notes = await transaction.collection('notes')
-        .where({ photo_id: task.photo_id, _openid: task._openid }).get()
-      for (const n of (notes.data || [])) {
-        await transaction.collection('notes').doc(n._id).remove()
-      }
-      const rels = await transaction.collection('photo_tags')
-        .where({ photo_id: task.photo_id, _openid: task._openid }).get()
-      for (const rel of (rels.data || [])) {
-        await transaction.collection('photo_tags').doc(rel._id).remove()
-        await transaction.collection('tags').doc(rel.tag_id)
-          .update({ data: { photo_count: _.inc(-1) } })
-      }
-      try {
-        await transaction.collection('photos').doc(task.photo_id).remove()
-      } catch (_) { /* 已删除 */ }
-      await transaction.commit()
-
-      await db.collection('deletion_tasks').doc(task._id).update({
-        data: { status: 'COMPLETED', completed_at: db.serverDate() },
-      })
-      succeeded++
-    } catch (_) {
-      await db.collection('deletion_tasks').doc(task._id).update({
-        data: {
-          status: 'FAILED',
-          retry_count: _.inc(1),
-          last_error: 'PHOTO_DELETE_RETRY_FAILED',
-        },
-      })
-    }
-  }
-
-  return { retried, succeeded, failed: retried - succeeded }
 }
 
 // ============================================================
@@ -220,8 +169,18 @@ async function correctPhotoTagCounts() {
   return { scanned: (photos.data || []).length, corrected }
 }
 
+async function pickHandler(params) {
+  const event = (params && params.event) || {}
+  const triggerName = event.TriggerName || ''
+  if (triggerName === 'deleteTaskWorker') {
+    const result = await photoDeleteWorker.run()
+    return { code: 'SUCCESS', data: result }
+  }
+  return handleCleanup()
+}
+
 exports.main = createTimerMain({
   domain: 'cleanup',
   logger,
-  handler: () => handleCleanup(),
+  handler: pickHandler,
 })

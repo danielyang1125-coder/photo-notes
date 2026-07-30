@@ -284,3 +284,114 @@ if (dev05Errors.length) {
 process.stdout.write(
   'DEV-05 audit manifest passed (UPL-21..UPL-22, CLN-03..CLN-05 static scope).\n',
 )
+
+// =========================================================================
+// DEV-07: 异步图片删除
+// =========================================================================
+const dev07Errors = []
+for (const relative of [
+  path.join('cloudfunctions', 'photo', 'delete-handlers.js'),
+  path.join('cloudfunctions', 'cleanup', 'photo-delete-worker.js'),
+  path.join('test', 'backend', 'photo-delete.test.js'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev07Errors.push(`artifact: ${relative}`)
+  }
+}
+
+// Check photo/index.js
+const photoEntry07 = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'photo', 'index.js'),
+  'utf8',
+)
+for (const evidence of [
+  "getDeleteStatus: ({ openid, event }) =>",
+  "deleteHandlers.handleDelete",
+  "deleteHandlers.handleGetDeleteStatus",
+  "createDeleteHandlers",
+]) {
+  if (!photoEntry07.includes(evidence)) {
+    dev07Errors.push(`photo/index evidence: ${evidence}`)
+  }
+}
+// Old sync delete code must NOT be present
+if (photoEntry07.includes('STORAGE_DELETE_FAILED') ||
+    photoEntry07.includes('DB_CLEANUP_FAILED') ||
+    photoEntry07.includes("'NOT_FOUND', message: '图片不存在或已删除'") ||
+    photoEntry07.includes('cloud.deleteFile({ fileList:')) {
+  dev07Errors.push('photo/index: old synchronous delete code still present')
+}
+
+// Check delete-handlers.js
+const deleteHandlers = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'photo', 'delete-handlers.js'),
+  'utf8',
+)
+for (const evidence of [
+  'TASK_KEY_PREFIX',
+  "status: 'PENDING'",
+  "current_stage: 'STORAGE_DELETE'",
+  'isUniqueConflict',
+  'DELETE_TASK_NOT_FOUND',
+  'projectTaskStatus',
+  'handleDelete',
+  'handleGetDeleteStatus',
+  'createDeleteHandlers',
+  'findExistingTask',
+]) {
+  if (!deleteHandlers.includes(evidence)) {
+    dev07Errors.push(`delete-handlers evidence: ${evidence}`)
+  }
+}
+
+// Check photo-delete-worker.js
+const photoDeleteWorker = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'cleanup', 'photo-delete-worker.js'),
+  'utf8',
+)
+for (const evidence of [
+  'STORAGE_DELETE',
+  'RELATED_DATA_CLEANUP',
+  'PHOTO_FINALIZE',
+  'MANUAL_REQUIRED',
+  'MAX_RETRIES',
+  'MAX_DAYS_SINCE_APPLIED',
+  'lease_token',
+  'stage_cursor',
+  'acquireTasks',
+  'createPhotoDeleteWorker',
+]) {
+  if (!photoDeleteWorker.includes(evidence)) {
+    dev07Errors.push(`photo-delete-worker evidence: ${evidence}`)
+  }
+}
+
+// Check cleanup/index.js
+const cleanupEntry07 = fs.readFileSync(
+  path.join(root, 'cloudfunctions', 'cleanup', 'index.js'),
+  'utf8',
+)
+for (const evidence of [
+  'photoDeleteWorker',
+  'deleteTaskWorker',
+  'TriggerName',
+  'createPhotoDeleteWorker',
+  'photoDeleteWorker.run',
+]) {
+  if (!cleanupEntry07.includes(evidence)) {
+    dev07Errors.push(`cleanup/index evidence: ${evidence}`)
+  }
+}
+if (cleanupEntry07.includes('retryFailedPhotoDeletes')) {
+  dev07Errors.push('cleanup/index: old retryFailedPhotoDeletes still present')
+}
+
+if (dev07Errors.length) {
+  process.stderr.write(
+    `DEV-07 audit failed:\n${dev07Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-07 audit manifest passed (BE-14, BE-15, PHD-01..PHD-12 static scope).\n',
+)
