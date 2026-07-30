@@ -4,6 +4,13 @@ const db = cloud.database()
 const { createBusinessMain } = require('./lib/shared/router')
 const { createSecurityLogger } = require('./lib/shared/security-log')
 const { AppError } = require('./lib/shared/response')
+const config = require('./lib/shared/config')
+
+// ---------------------------------------------------------------------------
+// DEV-13 功能开关：冷启动配置校验（未配置或非法值导致部署失败）
+// ---------------------------------------------------------------------------
+config.boolean('PUBLIC_RESOURCE_ERROR_MASKING')
+
 const { createTagHandlers } = require('./handlers')
 
 const logger = createSecurityLogger()

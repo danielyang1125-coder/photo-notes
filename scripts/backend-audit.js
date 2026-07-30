@@ -682,3 +682,112 @@ if (dev12Errors.length) {
 process.stdout.write(
   'DEV-12 audit manifest passed (BE-24, BE-25, CLN, COM-10..COM-12 static scope).\n',
 )
+
+// =========================================================================
+// DEV-13: 契约切换、验收与发布
+// =========================================================================
+const dev13Errors = []
+
+// 1. API contract document
+if (!fs.existsSync(path.join(root, 'docs', 'BACKEND-API-CONTRACT-V1.0.0.md'))) {
+  dev13Errors.push('artifact: docs/BACKEND-API-CONTRACT-V1.0.0.md')
+}
+
+// 2. Cloud acceptance documents
+for (const relative of [
+  path.join('docs', 'BACKEND-CLOUD-ACCEPTANCE-DEV-01.md'),
+  path.join('docs', 'BACKEND-CLOUD-ACCEPTANCE-DEV-13.md'),
+]) {
+  if (!fs.existsSync(path.join(root, relative))) {
+    dev13Errors.push(`artifact: ${relative}`)
+  }
+}
+
+// 3. Feature flag test file
+if (!fs.existsSync(path.join(root, 'test', 'backend', 'feature-flags.test.js'))) {
+  dev13Errors.push('test artifact: test/backend/feature-flags.test.js')
+}
+
+// 4. All four feature flags referenced in appropriate functions
+const flagChecks = {
+  upload: ['UPLOAD_ATTEMPT_REQUIRED', 'PUBLIC_RESOURCE_ERROR_MASKING'],
+  photo: ['CURSOR_PAGINATION_REQUIRED', 'ASYNC_PHOTO_DELETE_ENABLED', 'PUBLIC_RESOURCE_ERROR_MASKING'],
+  note: ['CURSOR_PAGINATION_REQUIRED', 'PUBLIC_RESOURCE_ERROR_MASKING'],
+  tag: ['PUBLIC_RESOURCE_ERROR_MASKING'],
+  account: ['PUBLIC_RESOURCE_ERROR_MASKING'],
+  user: ['PUBLIC_RESOURCE_ERROR_MASKING'],
+}
+for (const [domain, flags] of Object.entries(flagChecks)) {
+  const entrySource = fs.readFileSync(
+    path.join(root, 'cloudfunctions', domain, 'index.js'),
+    'utf8',
+  )
+  for (const flag of flags) {
+    if (!entrySource.includes(`config.boolean('${flag}')`)) {
+      dev13Errors.push(`${domain}/index.js: missing config.boolean('${flag}')`)
+    }
+  }
+}
+
+// 5. backend-check.js has no stale .skip() temporaryAllow entries
+const checkSource13 = fs.readFileSync(
+  path.join(root, 'scripts', 'backend-check.js'),
+  'utf8',
+)
+// The photo/index.js entry should have been removed (no .skip() in cloudfunctions)
+if (checkSource13.includes("path.join('cloudfunctions', 'photo', 'index.js')")) {
+  dev13Errors.push('backend-check.js: stale photo/index.js temporaryAllow for .skip()')
+}
+// The note/index.js entry should have been removed by DEV-08
+if (checkSource13.includes("path.join('cloudfunctions', 'note', 'index.js')")) {
+  dev13Errors.push('backend-check.js: stale note/index.js temporaryAllow for .skip()')
+}
+
+// 6. No old protocol code in cloud functions
+for (const domain of ['upload', 'photo', 'note', 'tag', 'account', 'user']) {
+  const handlerSource = fs.readFileSync(
+    path.join(root, 'cloudfunctions', domain, 'index.js'),
+    'utf8',
+  )
+  // Old confirm pattern: receiving size/width/height/format from client
+  if (handlerSource.includes("event.size") && handlerSource.includes("event.width")) {
+    dev13Errors.push(`${domain}/index.js: may still trust client size/width (old confirm)`)
+  }
+  // Old page-based pagination
+  if (/\.skip\s*\(/u.test(handlerSource)) {
+    dev13Errors.push(`${domain}/index.js: contains .skip() (old pagination)`)
+  }
+}
+
+// 7. Config template is complete with all required entries
+const configTemplate = fs.readFileSync(
+  path.join(root, 'config', 'backend-runtime.env.example'),
+  'utf8',
+)
+for (const flagName of [
+  'CURSOR_HMAC_SECRET',
+  'AUDIT_HMAC_SECRET',
+  'UPLOAD_ATTEMPT_REQUIRED',
+  'CURSOR_PAGINATION_REQUIRED',
+  'ASYNC_PHOTO_DELETE_ENABLED',
+  'PUBLIC_RESOURCE_ERROR_MASKING',
+  'CONTENT_REVIEW_ENABLED',
+]) {
+  if (!new RegExp(`^${flagName}=`, 'mu').test(configTemplate)) {
+    dev13Errors.push(`config template: missing ${flagName}`)
+  }
+}
+// Must not contain real secrets or env IDs
+if (/cloud1-|AKID|secret.{0,3}=.{8,}/iu.test(configTemplate)) {
+  dev13Errors.push('config template: contains real secrets or environment IDs')
+}
+
+if (dev13Errors.length) {
+  process.stderr.write(
+    `DEV-13 audit failed:\n${dev13Errors.join('\n')}\n`,
+  )
+  process.exit(1)
+}
+process.stdout.write(
+  'DEV-13 audit manifest passed (BE-26, BE-27, all feature flags, API contract, cloud acceptance).\n',
+)
