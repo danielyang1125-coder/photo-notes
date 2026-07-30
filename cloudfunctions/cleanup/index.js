@@ -9,6 +9,8 @@ const {
   createUploadCompensationService,
 } = require('./upload-compensation')
 const { createPhotoDeleteWorker } = require('./photo-delete-worker')
+const { createOrphanCleaner } = require('./orphan-cleaner')
+const { createCountCorrector } = require('./count-corrector')
 const logger = createSecurityLogger()
 
 const BATCH_SIZE = 100
@@ -30,6 +32,16 @@ const photoDeleteWorker = createPhotoDeleteWorker({
   deleteFiles: (fileList) => cloud.deleteFile({ fileList }),
   now: () => new Date(),
   batchSize: 10,
+})
+
+const orphanCleaner = createOrphanCleaner({
+  db,
+  now: () => new Date(),
+})
+
+const countCorrector = createCountCorrector({
+  db,
+  now: () => new Date(),
 })
 
 // ============================================================
@@ -77,96 +89,34 @@ async function handleCleanup() {
     summary.orphanRelations = { errorCode: 'INTERNAL_ERROR' }
   }
 
-  // 4. 计数校正：tags.photo_count
+  // 4. 计数校正：tags.photo_count + photos.tag_count
   try {
-    const r = await correctTagCounts()
-    summary.tagCountCorrection = r
+    const r = await correctCounts()
+    summary.countCorrection = r
   } catch (_) {
     logger.error({
-      event: 'cleanup.tag_count_correction',
+      event: 'cleanup.count_correction',
       result: 'FAILURE',
       safeErrorCode: 'INTERNAL_ERROR',
     })
-    summary.tagCountCorrection = { errorCode: 'INTERNAL_ERROR' }
-  }
-
-  // 5. 计数校正：photos.tag_count
-  try {
-    const r = await correctPhotoTagCounts()
-    summary.photoTagCountCorrection = r
-  } catch (_) {
-    logger.error({
-      event: 'cleanup.photo_tag_count_correction',
-      result: 'FAILURE',
-      safeErrorCode: 'INTERNAL_ERROR',
-    })
-    summary.photoTagCountCorrection = { errorCode: 'INTERNAL_ERROR' }
+    summary.countCorrection = { errorCode: 'INTERNAL_ERROR' }
   }
 
   return { code: 'SUCCESS', data: summary }
 }
 
 // ============================================================
-// 清理孤立 photo_tags
+// 清理孤立 photo_tags（委托给 orphan-cleaner 模块）
 // ============================================================
 async function cleanOrphanRelations() {
-  // 找 photo_tags 中图片已不存在的关系
-  const relations = await db.collection('photo_tags')
-    .limit(BATCH_SIZE)
-    .get()
-
-  let cleaned = 0
-  for (const rel of (relations.data || [])) {
-    try {
-      const photo = await db.collection('photos')
-        .where({ _id: rel.photo_id, _openid: rel._openid }).get()
-      if (!photo.data || photo.data.length === 0) {
-        await db.collection('photo_tags').doc(rel._id).remove()
-        cleaned++
-      }
-    } catch (_) {
-      // 跳过
-    }
-  }
-  return { scanned: (relations.data || []).length, cleaned }
+  return orphanCleaner.run({ dryRun: false, batchSize: BATCH_SIZE })
 }
 
 // ============================================================
-// 校正 tags.photo_count
+// 校正 tags.photo_count + photos.tag_count（委托给 count-corrector 模块）
 // ============================================================
-async function correctTagCounts() {
-  const tags = await db.collection('tags').limit(BATCH_SIZE).get()
-  let corrected = 0
-
-  for (const tag of (tags.data || [])) {
-    const count = await db.collection('photo_tags')
-      .where({ tag_id: tag._id, _openid: tag._openid }).count()
-    if (count.total !== (tag.photo_count || 0)) {
-      await db.collection('tags').doc(tag._id)
-        .update({ data: { photo_count: count.total } })
-      corrected++
-    }
-  }
-  return { scanned: (tags.data || []).length, corrected }
-}
-
-// ============================================================
-// 校正 photos.tag_count
-// ============================================================
-async function correctPhotoTagCounts() {
-  const photos = await db.collection('photos').limit(BATCH_SIZE).get()
-  let corrected = 0
-
-  for (const photo of (photos.data || [])) {
-    const count = await db.collection('photo_tags')
-      .where({ photo_id: photo._id, _openid: photo._openid }).count()
-    if (count.total !== (photo.tag_count || 0)) {
-      await db.collection('photos').doc(photo._id)
-        .update({ data: { tag_count: count.total } })
-      corrected++
-    }
-  }
-  return { scanned: (photos.data || []).length, corrected }
+async function correctCounts() {
+  return countCorrector.run({ dryRun: false, batchSize: BATCH_SIZE })
 }
 
 async function pickHandler(params) {
