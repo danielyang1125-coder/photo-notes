@@ -700,8 +700,8 @@ backend(DEV-xx): <任务结果>
 | DEV-05 上传补偿与清理 | CODE_COMPLETE | NOT_VERIFIED | 94 个 JS 语法/漂移/禁止模式检查通过；54/54 单测通过；定时补偿实测并入 DEV-13 |
 | DEV-06 图片查询与详情 | CODE_COMPLETE | NOT_VERIFIED | 97 个 JS 语法/漂移/禁止模式检查通过；84/84 单测通过（新增 30 个 photo 测试）；实现 ALL/UNCATEGORIZED/TAG 三域 HMAC keyset cursor、ACTIVE 隔离、脏关系跳过、受控临时 URL 和字段安全投影；云端 cursor 索引 explain 并入 DEV-13 |
 | DEV-07 异步图片删除 | CODE_COMPLETE | NOT_VERIFIED | 100 个 JS 语法/漂移/禁止模式检查通过；111/111 单测通过（新增 27 个 photo-delete 测试）；实现 ACTIVE→DELETING 短事务、`task_key` 幂等、`getDeleteStatus` 安全投影、3 阶段 worker（STORAGE_DELETE/RELATED_DATA_CLEANUP/PHOTO_FINALIZE）、租约获取与回收、指数退避重试、MANUAL_REQUIRED 终态；云端验证并入 DEV-13 |
-| DEV-08 备注事务与 Cursor | TODO | NOT_VERIFIED | — |
-| DEV-09 标签核心 | TODO | NOT_VERIFIED | — |
+| DEV-08 备注事务与 Cursor | CODE_COMPLETE | NOT_VERIFIED | 100 个 JS 语法/漂移/禁止模式检查通过；note 测试通过（add/update/delete/list 四种排序 cursor、乐观锁冲突、ACTIVE photo 校验、临时缩略图）；云端验证并入 DEV-13 |
+| DEV-09 标签核心 | CODE_COMPLETE | NOT_VERIFIED | 105 个 JS 语法/漂移/禁止模式检查通过；79/79 新增 tag 单测通过；重构为 handlers.js 工厂模式（DI 注入）；修复 TAG-01～TAG-12、TAG-15 共 13 个 P0/P1 审计问题：规范化顺序（Unicode trim→控制字符→code point→保留名→NFC→Latin 小写）、list 增加 `_id` 稳定排序键、create/rename content review fail-closed、delete 统一 TAG_NOT_FOUND、getPhotoTags 校验 ACTIVE photo、updatePhotoTags 事务内差异计算+交叉拒绝+计数一致性+batchAdd 逐图独立事务+部分结果；云端验证并入 DEV-13 |
 | DEV-10 引用清理与计数校正 | TODO | NOT_VERIFIED | — |
 | DEV-11 账号注销 | TODO | NOT_VERIFIED | — |
 | DEV-12 cleanup 与安全收口 | TODO | NOT_VERIFIED | — |
