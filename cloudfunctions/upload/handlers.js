@@ -56,16 +56,7 @@ async function readPhoto(collection, query) {
 
 function assertConfirmInput(event, timestamp) {
   const input = validation.requireObject(event)
-  const allowed = new Set([
-    'type',
-    'attemptId',
-    'fileId',
-    'shootTime',
-    'timeSource',
-  ])
-  if (Object.keys(input).some((key) => !allowed.has(key))) {
-    throw new AppError('VALIDATION_ERROR')
-  }
+
   const attemptId = validation.requestId(input.attemptId)
   const fileId = validation.string(input.fileId, { min: 1, max: 1024 })
   const timeSource = validation.enumValue(input.timeSource, [
@@ -232,7 +223,6 @@ function createUploadAttemptHandlers(options) {
       pending_file_id: null,
       promoted_file_id: null,
       promoted_at: null,
-      verified_meta: null,
       confirm_lease_token: null,
       confirm_lease_expire_at: null,
       photo_id: null,

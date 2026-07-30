@@ -158,21 +158,41 @@ Component({
       if (!initialTask) return
       this._updateTask(taskId, { status: 'compressing', error: '', progress: 0 })
       let uploadedFileId = ''
+      let attemptId = ''
       try {
         const ext = (initialTask.filePath.split('.').pop() || '').toUpperCase()
         if (!validatePhotoFormat(ext)) throw new Error('不支持的格式')
         if (!validatePhotoSize(initialTask.fileSize)) throw new Error(`超过${readableLimit()}`)
+
+        // Step 1: prepare — 获取服务端签发的 attemptId 和 cloudPath
+        const prepareResult = await uploadService.prepare({ taskId: initialTask.requestId })
+        if (!this._isRunnable(taskId, generation)) return
+        if (prepareResult.result.code !== 'SUCCESS') {
+          const msg = prepareResult.result.code === 'UPLOAD_DUPLICATED'
+            ? '任务重复'
+            : prepareResult.result.message || '准备上传失败'
+          this._updateTask(taskId, { status: 'failed', error: msg })
+          return
+        }
+        attemptId = prepareResult.result.data.attemptId
+        this._updateTask(taskId, { _attemptId: attemptId })
+        const serverCloudPath = prepareResult.result.data.cloudPath
+        // 如果服务端已存在同名任务（幂等重试），直接成功
+        if (prepareResult.result.data.photoId) {
+          this._updateTask(taskId, { status: 'success', progress: 100, photoId: prepareResult.result.data.photoId })
+          return
+        }
 
         const exif = await extractShootTime(initialTask.filePath)
         if (!this._isRunnable(taskId, generation)) return
         const compressed = await compress(initialTask.filePath)
         if (!this._isRunnable(taskId, generation)) return
 
+        // Step 2: 上传到服务端签发的路径
         this._updateTask(taskId, { status: 'uploading', progress: 0 })
-        const cloudPath = `photos/${Date.now()}_${Math.random().toString(36).slice(2, 10)}.${ext || 'jpg'}`
         const uploadResult = await new Promise((resolve, reject) => {
           const uploadTask = wx.cloud.uploadFile({
-            cloudPath,
+            cloudPath: serverCloudPath,
             filePath: compressed.path,
             success: resolve,
             fail: reject,
@@ -190,16 +210,13 @@ Component({
           return
         }
 
+        // Step 3: confirm — 服务端验证文件并原子创建 photo
         this._updateTask(taskId, { status: 'confirming' })
         const confirmResult = await uploadService.confirm({
+          attemptId,
           fileId: uploadedFileId,
-          size: compressed.size,
-          width: compressed.width,
-          height: compressed.height,
-          format: compressed.path.toLowerCase().endsWith('.png') ? 'PNG' : 'JPEG',
           shootTime: exif.shootTime ? exif.shootTime.toISOString() : null,
           timeSource: exif.timeSource,
-          taskId: initialTask.requestId,
         })
         if (!this._isRunnable(taskId, generation)) return
         if (confirmResult.result.code === 'SUCCESS') {
@@ -257,6 +274,12 @@ Component({
 
     cancelActiveTasks() {
       this._batchGeneration += 1
+      // 通知服务端取消所有活跃的 attempt
+      const activeTasks = this.data.tasks.filter(t => ACTIVE_STATUS.includes(t.status))
+      const attemptIds = activeTasks.map(t => t._attemptId).filter(Boolean)
+      if (attemptIds.length > 0) {
+        uploadService.cancel({ attemptIds }).catch(() => {})
+      }
       Object.keys(this._uploadHandles).forEach(id => {
         const handle = this._uploadHandles[id]
         if (handle && handle.abort) handle.abort()

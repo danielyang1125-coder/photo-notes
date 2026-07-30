@@ -1,0 +1,106 @@
+{
+  "envId": "cloud1-d0gsee3m13c2b446c",
+  "version": "2.0",
+  "functions": [
+    {
+      "name": "user",
+      "timeout": 3,
+      "envVariables": {
+        "CURSOR_HMAC_SECRET": "7HegCC3GhIFP9XToUqOHEr1lZTdbd3S08djaM5M1NSQ",
+        "AUDIT_HMAC_SECRET": "AcVNcdqt90IFKVspRMXZ35_NplcPibxEfQQdw_M76UA",
+        "DEPLOYMENT_MODE": "PRIVATE_SINGLE_USER",
+        "UPLOAD_ATTEMPT_REQUIRED": "true",
+        "CURSOR_PAGINATION_REQUIRED": "true",
+        "ASYNC_PHOTO_DELETE_ENABLED": "true",
+        "PUBLIC_RESOURCE_ERROR_MASKING": "true",
+        "CONTENT_REVIEW_ENABLED": "false"
+      }
+    },
+    {
+      "name": "upload",
+      "timeout": 60,
+      "memorySize": 512,
+      "envVariables": {
+        "CURSOR_HMAC_SECRET": "7HegCC3GhIFP9XToUqOHEr1lZTdbd3S08djaM5M1NSQ",
+        "AUDIT_HMAC_SECRET": "AcVNcdqt90IFKVspRMXZ35_NplcPibxEfQQdw_M76UA",
+        "DEPLOYMENT_MODE": "PRIVATE_SINGLE_USER",
+        "UPLOAD_ATTEMPT_REQUIRED": "true",
+        "CURSOR_PAGINATION_REQUIRED": "true",
+        "ASYNC_PHOTO_DELETE_ENABLED": "true",
+        "PUBLIC_RESOURCE_ERROR_MASKING": "true",
+        "CONTENT_REVIEW_ENABLED": "false"
+      }
+    },
+    {
+      "name": "photo",
+      "timeout": 5,
+      "envVariables": {
+        "CURSOR_HMAC_SECRET": "7HegCC3GhIFP9XToUqOHEr1lZTdbd3S08djaM5M1NSQ",
+        "AUDIT_HMAC_SECRET": "AcVNcdqt90IFKVspRMXZ35_NplcPibxEfQQdw_M76UA",
+        "DEPLOYMENT_MODE": "PRIVATE_SINGLE_USER",
+        "UPLOAD_ATTEMPT_REQUIRED": "true",
+        "CURSOR_PAGINATION_REQUIRED": "true",
+        "ASYNC_PHOTO_DELETE_ENABLED": "true",
+        "PUBLIC_RESOURCE_ERROR_MASKING": "true",
+        "CONTENT_REVIEW_ENABLED": "false"
+      }
+    },
+    {
+      "name": "note",
+      "timeout": 3,
+      "envVariables": {
+        "CURSOR_HMAC_SECRET": "7HegCC3GhIFP9XToUqOHEr1lZTdbd3S08djaM5M1NSQ",
+        "AUDIT_HMAC_SECRET": "AcVNcdqt90IFKVspRMXZ35_NplcPibxEfQQdw_M76UA",
+        "DEPLOYMENT_MODE": "PRIVATE_SINGLE_USER",
+        "UPLOAD_ATTEMPT_REQUIRED": "true",
+        "CURSOR_PAGINATION_REQUIRED": "true",
+        "ASYNC_PHOTO_DELETE_ENABLED": "true",
+        "PUBLIC_RESOURCE_ERROR_MASKING": "true",
+        "CONTENT_REVIEW_ENABLED": "false"
+      }
+    },
+    {
+      "name": "tag",
+      "timeout": 3,
+      "envVariables": {
+        "CURSOR_HMAC_SECRET": "7HegCC3GhIFP9XToUqOHEr1lZTdbd3S08djaM5M1NSQ",
+        "AUDIT_HMAC_SECRET": "AcVNcdqt90IFKVspRMXZ35_NplcPibxEfQQdw_M76UA",
+        "DEPLOYMENT_MODE": "PRIVATE_SINGLE_USER",
+        "UPLOAD_ATTEMPT_REQUIRED": "true",
+        "CURSOR_PAGINATION_REQUIRED": "true",
+        "ASYNC_PHOTO_DELETE_ENABLED": "true",
+        "PUBLIC_RESOURCE_ERROR_MASKING": "true",
+        "CONTENT_REVIEW_ENABLED": "false"
+      }
+    },
+    {
+      "name": "account",
+      "timeout": 5,
+      "envVariables": {
+        "CURSOR_HMAC_SECRET": "7HegCC3GhIFP9XToUqOHEr1lZTdbd3S08djaM5M1NSQ",
+        "AUDIT_HMAC_SECRET": "AcVNcdqt90IFKVspRMXZ35_NplcPibxEfQQdw_M76UA",
+        "DEPLOYMENT_MODE": "PRIVATE_SINGLE_USER",
+        "UPLOAD_ATTEMPT_REQUIRED": "true",
+        "CURSOR_PAGINATION_REQUIRED": "true",
+        "ASYNC_PHOTO_DELETE_ENABLED": "true",
+        "PUBLIC_RESOURCE_ERROR_MASKING": "true",
+        "CONTENT_REVIEW_ENABLED": "false"
+      }
+    },
+    {
+      "name": "cleanup",
+      "timeout": 60,
+      "memorySize": 512,
+      "envVariables": {
+        "CURSOR_HMAC_SECRET": "7HegCC3GhIFP9XToUqOHEr1lZTdbd3S08djaM5M1NSQ",
+        "AUDIT_HMAC_SECRET": "AcVNcdqt90IFKVspRMXZ35_NplcPibxEfQQdw_M76UA",
+        "DEPLOYMENT_MODE": "PRIVATE_SINGLE_USER",
+        "UPLOAD_ATTEMPT_REQUIRED": "true",
+        "CURSOR_PAGINATION_REQUIRED": "true",
+        "ASYNC_PHOTO_DELETE_ENABLED": "true",
+        "PUBLIC_RESOURCE_ERROR_MASKING": "true",
+        "CONTENT_REVIEW_ENABLED": "false"
+      }
+    }
+  ]
+}

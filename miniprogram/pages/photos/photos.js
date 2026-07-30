@@ -9,7 +9,7 @@ Page({
     list: [],
     leftList: [],
     rightList: [],
-    page: 1,
+    cursor: null,
     hasMore: true,
     refreshing: false,
     refresherTriggered: false,
@@ -94,7 +94,7 @@ Page({
   _beginQuery(clearList) {
     if (!clearList && this.data.list.length > 0) {
       this._preservedQueryState = {
-        page: this.data.page,
+        cursor: this.data.cursor,
         hasMore: this.data.hasMore,
       }
     } else {
@@ -103,7 +103,7 @@ Page({
     this._queryVersion += 1
     this._inflight = {}
     const patch = {
-      page: 1,
+      cursor: null,
       hasMore: true,
       loadingMore: false,
       loadMoreError: '',
@@ -126,7 +126,7 @@ Page({
     return snapshot.version === this._queryVersion &&
       snapshot.scope === current.scope &&
       snapshot.tagId === current.tagId &&
-      snapshot.page === this.data.page
+      snapshot.cursor === this.data.cursor
   },
 
   async loadPhotos(requestType) {
@@ -135,10 +135,10 @@ Page({
       version: this._queryVersion,
       scope: filter.scope,
       tagId: filter.tagId,
-      page: this.data.page,
+      cursor: this.data.cursor,
       requestType,
     }
-    const requestKey = `${snapshot.version}:${snapshot.scope}:${snapshot.tagId || ''}:${snapshot.page}`
+    const requestKey = `${snapshot.version}:${snapshot.scope}:${snapshot.tagId || ''}:${snapshot.cursor || 'first'}`
     if (this._inflight[requestKey]) return this._inflight[requestKey]
 
     if (requestType === 'refresh') {
@@ -149,7 +149,7 @@ Page({
       this.setData({ loadingMore: true, loadMoreError: '' })
     }
 
-    const request = photosService.list(snapshot.scope, snapshot.tagId, snapshot.page)
+    const request = photosService.list(snapshot.scope, snapshot.tagId, snapshot.cursor)
       .then(async (res) => {
         if (!this._isCurrent(snapshot)) return
         const result = res.result || {}
@@ -164,7 +164,7 @@ Page({
         }
 
         const incoming = (result.data && result.data.list) || []
-        const base = snapshot.page === 1 ? [] : this.data.list
+        const base = (!snapshot.cursor) ? [] : this.data.list
         const seen = new Set()
         const merged = [...base, ...incoming].filter(item => {
           if (!item || !item._id || seen.has(item._id)) return false
@@ -177,7 +177,7 @@ Page({
           leftList: columns.left,
           rightList: columns.right,
           hasMore: Boolean(result.data && result.data.hasMore),
-          page: snapshot.page + 1,
+          cursor: result.data && result.data.nextCursor ? result.data.nextCursor : null,
           pageState: merged.length === 0 ? 'empty' : 'ready',
           loadMoreError: '',
         })
@@ -192,7 +192,7 @@ Page({
         } else if (requestType === 'refresh') {
           if (this._preservedQueryState) {
             this.setData({
-              page: this._preservedQueryState.page,
+              cursor: this._preservedQueryState.cursor,
               hasMore: this._preservedQueryState.hasMore,
             })
             this._preservedQueryState = null

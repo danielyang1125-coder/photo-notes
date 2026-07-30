@@ -268,9 +268,9 @@
 - confirm 只接收 `attemptId,fileId,shootTime,timeSource`。
 - 短事务领取 confirm lease；有效租约存在时返回 `UPLOAD_CONFIRM_IN_PROGRESS`。
 - 验证 fileID 环境和路径与 attempt 完全一致；下载 buffer 获取真实字节。
-- 使用 magic bytes + 解码验证静态 JPEG/PNG、宽高和损坏情况；扩展名不作为依据。
-- 生成最长边 ≤750px、≤1MB 的审核 buffer；拒绝和服务不可用分别返回安全错误，服务不可用不得放行。
-- 审核通过后把已验证 buffer 写到随机 `photos/active/`，保存 SHA-256 和真实元数据。
+- 使用 magic bytes + 纯 JS 解析（JPEG SOF / PNG IHDR 段）验证格式、宽高；不依赖 sharp 等原生模块。
+- 审核仅在 `CONTENT_REVIEW_ENABLED=true` 时执行；PRIVATE_SINGLE_USER 模式默认跳过。
+- 验证通过后原图直传到随机 `photos/active/`，保存 SHA-256 和真实元数据。
 - 最终短事务完成 user/photo/attempt 三项原子提交；唯一冲突读取原 photo，不能重复计费。
 - 提升成功但事务失败时保留可安全重试的信息，由 DEV-05 补偿。
 
@@ -663,7 +663,7 @@ backend(DEV-xx): <任务结果>
 
 ### 云函数运行约束
 
-- confirm 的内存和超时必须覆盖 20 MB 下载及 sharp 解码。
+- confirm 的内存和超时必须覆盖 20 MB 下载及纯 JS 图片校验。
 - 一个 confirm 请求只处理一张图片。
 - worker 在 deadline 前停止领取新批次并保存 cursor。
 - 云验收记录冷启动时间、单图处理时间和单次调用费用估算。

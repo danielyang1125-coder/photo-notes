@@ -6,7 +6,7 @@ const { createBusinessMain } = require('./lib/shared/router')
 const { createSecurityLogger } = require('./lib/shared/security-log')
 const { createUploadAttemptHandlers } = require('./handlers')
 const { AppError } = require('./lib/shared/response')
-const { createSharpImageProcessor } = require('./image-processing')
+const { createLightImageProcessor } = require('./image-processing')
 
 // ---------------------------------------------------------------------------
 // DEV-13 功能开关：冷启动配置校验（未配置或非法值导致部署失败）
@@ -44,7 +44,7 @@ const uploadAttemptHandlers = createUploadAttemptHandlers({
   environmentId: currentEnvironmentId,
   isContentReviewEnabled: () =>
     config.boolean('CONTENT_REVIEW_ENABLED'),
-  processImage: createSharpImageProcessor(),
+  processImage: createLightImageProcessor(),
   reviewImage,
   uploadFile: (cloudPath, fileContent) =>
     cloud.uploadFile({ cloudPath, fileContent }),

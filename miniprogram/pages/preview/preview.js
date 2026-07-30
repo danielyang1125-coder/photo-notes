@@ -120,16 +120,15 @@ Page({
     this.setData({ showDeleteConfirm: false })
     try {
       const res = await photosService.del(this.data.photoId)
-      if (res.result.code === 'SUCCESS' && res.result.data.status === 'COMPLETED') {
-        wx.showToast({ title: '已删除', icon: 'success' })
+      if (res.result.code === 'SUCCESS') {
+        // 异步删除：提交后图片立即隐藏，后台 worker 最终清理
+        wx.showToast({ title: '已提交删除', icon: 'success' })
         this._deleted = true
         app.globalData.photoListChange = {
           photoId: this.data.photoId,
           changeType: 'deleted',
         }
         setTimeout(() => wx.navigateBack(), 500)
-      } else if (res.result.code === 'SUCCESS') {
-        wx.showToast({ title: res.result.data.message || '删除未完成，请稍后重试', icon: 'none' })
       } else {
         wx.showToast({ title: res.result.message || '删除失败', icon: 'none' })
       }

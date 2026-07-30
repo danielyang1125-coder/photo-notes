@@ -61,7 +61,7 @@
 | 数据库 | 微信云开发 · 云数据库 | MongoDB 兼容文档数据库 |
 | 文件存储 | 微信云开发 · 云存储 | 底层腾讯云 COS，支持万象优图 CI 图片处理 |
 | 定时任务 | 云函数 · 定时触发器 | 孤立对象清理、注销任务推进 |
-| 图片处理 | 云存储内置 CI | 服务端拼接参数生成缩略图 URL，前端不拼接 |
+| 图片处理 | 云存储内置 CI | 服务端拼接参数生成缩略图 URL，前端不拼接；服务端纯 JS 校验图片（magic bytes + 尺寸解析），不依赖 sharp 等原生模块 |
 
 ---
 
@@ -328,7 +328,8 @@ callFunction('upload', { type: 'prepare', taskId })
 wx.cloud.uploadFile() → 仅上传到签发的 uploads/pending/{random32}.bin
     ↓
 callFunction('upload', { type: 'confirm', attemptId, fileId, shootTime, timeSource })
-→ 云函数校验真实文件并提升到 photos/active/
+→ 云函数纯 JS 校验（magic bytes + JPEG SOF / PNG IHDR 尺寸解析，零原生依赖）
+→ 原图直传到 photos/active/
 → photo + used_bytes + attempt 在同一事务提交
 ```
 
@@ -537,7 +538,7 @@ exports.main = async (event, context) => {
   pending_file_id: null,
   promoted_file_id: null,
   promoted_at: null,
-  verified_meta: null,             // 服务端解析的 size/width/height/format/sha256
+  verified_meta: null,             // 服务端纯 JS 解析的 size/width/height/format/sha256（仅在 confirm 成功时写入）
   confirm_lease_token: null,
   confirm_lease_expire_at: null,
   photo_id: null,
@@ -628,7 +629,7 @@ cloud://env-id/
 
 路径不得包含完整或截断 OPENID，扩展名不作为格式依据。`random32` 使用服务端密码学安全随机数；只有 active fileID 可以写入 `photos.file_id`。
 
-`upload/confirm` 必须校验 fileID 所属环境和路径与 attempt 完全一致，下载 buffer 后以真实字节数、magic bytes 和解码结果确定大小、格式与尺寸，仅接受静态 JPEG/PNG。审核通过后由云函数把已验证 buffer 提升到随机 active 路径并保存 SHA-256；`shootTime/timeSource` 只做类型、枚举和合理范围校验，不宣称已由服务端验证 EXIF。
+`upload/confirm` 必须校验 fileID 所属环境和路径与 attempt 完全一致，下载 buffer 后通过纯 JS（magic bytes + JPEG SOF / PNG IHDR 段解析）确定格式与尺寸，不依赖 sharp 等原生模块。验证通过后原图直传到随机 active 路径并保存 SHA-256；`shootTime/timeSource` 只做类型、枚举和合理范围校验，不宣称已由服务端验证 EXIF。
 
 **图片处理策略**（万象优图 CI）：
 - **缩略图**：临时 URL + `?imageMogr2/thumbnail/!200x200r`（云函数拼接）
@@ -731,7 +732,7 @@ if (result.stats.updated === 0) {
 
 采用微信云调用 `security.imgSecCheck` + `security.msgSecCheck` 对用户上传内容进行合规检测。
 
-**审核策略**：先审后入库——客户端文件先进入隔离的 pending 区，审核和真实文件校验通过后才提升到 active 区并写入数据库。
+**审核策略**：由 `CONTENT_REVIEW_ENABLED` 环境变量控制。启用时（PUBLIC 模式强制），客户端文件先进入隔离的 pending 区，审核通过后才提升到 active 区。禁用时（PRIVATE_SINGLE_USER 模式默认），跳过审核直接入 active 区。无论是否开启审核，图片的 magic bytes、尺寸和格式校验均执行。
 
 **覆盖范围**：
 
@@ -762,10 +763,8 @@ upload/prepare 签发 pending 路径 → 客户端上传并获取 fileID
 | 审核服务超时/不可用 | **阻断操作**，返回 `CONTENT_REVIEW_UNAVAILABLE`，前端提示"服务暂时不可用，请稍后重试" |
 
 **设计约束**：
-- 审核不通过的文件必须从云存储删除，失败时由 attempt cleanup 补偿。
-- 云调用 `imgSecCheck` 对图片大小有 1MB 限制：压缩后的图片（≤3MB）可能超出，需在调用前二次压缩为审核专用 buffer（最长边 ≤750px，size ≤1MB），原始压缩文件仍用于存储。
-- 审核日志仅记录 `requestId` 和通过/拒绝结果，不记录图片内容、备注文本或标签名称。
-- V1.0 不设人工复核入口；用户在设置页可通过客服联系方式反馈误判。
+- 图片校验使用纯 JS 实现（magic bytes 头部检测 + JPEG SOF/PNG IHDR 段解析），零原生模块依赖，避免 sharp/libvips 在云函数 Linux 运行时的兼容性问题。
+- 云调用 `imgSecCheck` 仅在 `CONTENT_REVIEW_ENABLED=true` 时执行。
 
 **新增错误码**：
 
@@ -960,15 +959,15 @@ getDeletionStatus:  IN { type:"getDeletionStatus" }  →  OUT { status, retryCou
     云函数 upload:
       取得短 confirm 租约
       校验 _openid、环境、fileID 路径与 attempt
-      下载并解析真实 size/format/width/height
+      下载并解析真实 size/format/width/height（纯 JS，零原生依赖）
       ↓
       内容安全审核（§5.6）:
-        cloud.downloadFile({ fileID }) → 二次压缩至 ≤1MB
-        cloud.openapi.security.imgSecCheck()
+        CONTENT_REVIEW_ENABLED=true 时：cloud.openapi.security.imgSecCheck()
         ├─ 通过 → 继续
         └─ 不通过 → 清理对象，返回 CONTENT_REVIEW_FAILED
+        CONTENT_REVIEW_ENABLED=false（PRIVATE_SINGLE_USER）→ 跳过审核
       ↓
-      提升已验证 buffer 到 photos/active/
+      原图直传到 photos/active/
       最终短事务:
         再校验 attempt=PREPARED、租约、user=ACTIVE 和配额
         photos.insert({status:ACTIVE,...verified_meta})
@@ -1119,7 +1118,7 @@ PG-009 二次确认（显示服务端 photo_count）
 
 | 策略 | 说明 |
 |---|---|
-| 只存压缩图 | 不上传原图 |
+| 只存压缩图 | 客户端压缩后上传，服务端不二次处理 |
 | 动态缩略图 | CI 动态生成，不额外存储缩略图副本 |
 | 定时清理 | 移除孤立对象 |
 | 复用既有定时函数 | 计数校正并入 `cleanup`，不新增独立调度服务 |

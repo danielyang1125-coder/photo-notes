@@ -1,1 +1,1 @@
-{"name":"upload","version":"1.0.0","description":"图片笔记小程序 - 上传确认","main":"index.js","dependencies":{"sharp":"^0.32.6","wx-server-sdk":"~3.0.4"}}
+{"name":"upload","version":"1.0.0","description":"图片笔记小程序 - 上传确认","main":"index.js","dependencies":{"wx-server-sdk":"~3.0.4"}}
