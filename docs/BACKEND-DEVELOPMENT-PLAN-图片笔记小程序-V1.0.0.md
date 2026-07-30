@@ -698,7 +698,7 @@ backend(DEV-xx): <任务结果>
 | DEV-03 上传 attempt 与 cancel | CODE_COMPLETE | NOT_VERIFIED | 90 个 JS 语法/漂移/禁止模式检查通过；41/41 单测通过；prepare 并发及存储权限并入 DEV-13 |
 | DEV-04 可信 confirm 与最终事务 | CODE_COMPLETE | NOT_VERIFIED | 92 个 JS 语法/漂移/禁止模式检查通过；49/49 单测通过；sharp、审核、提升实测并入 DEV-13 |
 | DEV-05 上传补偿与清理 | CODE_COMPLETE | NOT_VERIFIED | 94 个 JS 语法/漂移/禁止模式检查通过；54/54 单测通过；定时补偿实测并入 DEV-13 |
-| DEV-06 图片查询与详情 | TODO | NOT_VERIFIED | — |
+| DEV-06 图片查询与详情 | CODE_COMPLETE | NOT_VERIFIED | 97 个 JS 语法/漂移/禁止模式检查通过；84/84 单测通过（新增 30 个 photo 测试）；实现 ALL/UNCATEGORIZED/TAG 三域 HMAC keyset cursor、ACTIVE 隔离、脏关系跳过、受控临时 URL 和字段安全投影；云端 cursor 索引 explain 并入 DEV-13 |
 | DEV-07 异步图片删除 | TODO | NOT_VERIFIED | — |
 | DEV-08 备注事务与 Cursor | TODO | NOT_VERIFIED | — |
 | DEV-09 标签核心 | TODO | NOT_VERIFIED | — |
