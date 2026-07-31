@@ -1,11 +1,27 @@
 const app = getApp()
 const tagsService = require('../../services/tags')
+const { TAG_NAME_MAX_LENGTH, RESERVED_TAG_NAMES } = require('../../utils/constants')
 
 Page({
-  data: { list: [], loading: false, mutating: false },
+  data: { list: [], loading: false, mutating: false, navTotalHeight: 0 },
 
   onLoad() {
+    this._calcNavHeight()
     this.loadTags()
+  },
+
+  _calcNavHeight() {
+    try {
+      const info = wx.getSystemInfoSync() || {}
+      const menu = wx.getMenuButtonBoundingClientRect()
+      const statusBarHeight = Number(info.statusBarHeight) || 20
+      const navBarHeight = (menu && menu.top > 0 && menu.height > 0)
+        ? Math.max(44, (menu.top - statusBarHeight) * 2 + menu.height)
+        : 44
+      this.setData({ navTotalHeight: statusBarHeight + navBarHeight })
+    } catch (e) {
+      this.setData({ navTotalHeight: 96 })
+    }
   },
 
   async loadTags() {
@@ -61,11 +77,28 @@ Page({
       fail: () => resolve({ confirm: false }),
     }))
     if (!modal.confirm) return
+
+    // ------ 前端校验 ------
+    const name = (modal.content || '').trim()
+    if (!name) {
+      wx.showToast({ title: '标签名称不能为空', icon: 'none' })
+      return
+    }
+    if ([...name].length > TAG_NAME_MAX_LENGTH) {
+      wx.showToast({ title: `标签名称最多 ${TAG_NAME_MAX_LENGTH} 个字符`, icon: 'none' })
+      return
+    }
+    if (RESERVED_TAG_NAMES.includes(name)) {
+      wx.showToast({ title: '该名称不可使用', icon: 'none' })
+      return
+    }
+    // ------ 前端校验结束 ------
+
     this.setData({ mutating: true })
     try {
       const res = tag
-        ? await tagsService.rename(tag._id, modal.content || '')
-        : await tagsService.create(modal.content || '')
+        ? await tagsService.rename(tag._id, name)
+        : await tagsService.create(name)
       if (!res.result || res.result.code !== 'SUCCESS') {
         wx.showToast({ title: (res.result && res.result.message) || '操作失败', icon: 'none' })
         return

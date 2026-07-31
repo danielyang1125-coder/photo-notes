@@ -7,10 +7,25 @@ Page({
     usedMB: '0', limitMB: '500',
     usagePercent: 0,
     showDeleteDialog: false,
+    navTotalHeight: 0,
   },
 
-  onLoad() { this.loadStatus() },
+  onLoad() { this._calcNavHeight(); this.loadStatus() },
   onShow() { this.loadStatus() },
+
+  _calcNavHeight() {
+    try {
+      const info = wx.getSystemInfoSync() || {}
+      const menu = wx.getMenuButtonBoundingClientRect()
+      const statusBarHeight = Number(info.statusBarHeight) || 20
+      const navBarHeight = (menu && menu.top > 0 && menu.height > 0)
+        ? Math.max(44, (menu.top - statusBarHeight) * 2 + menu.height)
+        : 44
+      this.setData({ navTotalHeight: statusBarHeight + navBarHeight })
+    } catch (e) {
+      this.setData({ navTotalHeight: 96 })
+    }
+  },
 
   _applyUsage(used, limit) {
     this.setData({

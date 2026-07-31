@@ -1,7 +1,7 @@
 <!-- PG-007 设置与隐私 -->
 <view class="page">
   <t-navbar title="设置" left-arrow bind:go-back="handleBack" />
-  <view class="content">
+  <view class="content" style="padding-top: {{navTotalHeight}}px;">
     <!-- 空间使用 -->
     <t-cell-group title="存储空间">
       <t-cell title="已用空间" description="{{usedMB}} MB / {{limitMB}} MB" />

@@ -13,6 +13,7 @@ function extractShootTime(filePath) {
   return new Promise((resolve) => {
     try {
       const fs = wx.getFileSystemManager()
+      // 用 ArrayBuffer 读取（比 base64 内存效率高），parseExifDate 只扫描前 64KB
       const data = fs.readFileSync(filePath)
       const exifDate = parseExifDate(data)
       if (exifDate) {

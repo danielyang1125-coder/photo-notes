@@ -6,6 +6,7 @@ const uploadService = require('../../services/upload')
 
 const ACTIVE_STATUS = ['pending', 'compressing', 'uploading', 'confirming']
 const FINAL_STATUS = ['success', 'failed', 'cancelled']
+const UPLOAD_TIMEOUT_MS = 120000 // 单文件上传超时 2 分钟
 
 Component({
   properties: {
@@ -188,14 +189,32 @@ Component({
         const compressed = await compress(initialTask.filePath)
         if (!this._isRunnable(taskId, generation)) return
 
-        // Step 2: 上传到服务端签发的路径
+        // Step 2: 上传到服务端签发的路径（带超时保护）
         this._updateTask(taskId, { status: 'uploading', progress: 0 })
         const uploadResult = await new Promise((resolve, reject) => {
+          let settled = false
+          const timer = setTimeout(() => {
+            if (settled) return
+            settled = true
+            if (uploadTask && uploadTask.abort) uploadTask.abort()
+            reject(new Error('上传超时，请检查网络后重试'))
+          }, UPLOAD_TIMEOUT_MS)
+
           const uploadTask = wx.cloud.uploadFile({
             cloudPath: serverCloudPath,
             filePath: compressed.path,
-            success: resolve,
-            fail: reject,
+            success: (res) => {
+              if (settled) return
+              settled = true
+              clearTimeout(timer)
+              resolve(res)
+            },
+            fail: (err) => {
+              if (settled) return
+              settled = true
+              clearTimeout(timer)
+              reject(err)
+            },
           })
           this._uploadHandles[taskId] = uploadTask
           uploadTask.onProgressUpdate(progress => {

@@ -115,8 +115,14 @@ function createNoteHandlers(deps) {
 
     const addResult = await db.collection('notes').add({ data: note })
 
+    // 回读以获取服务端真实日期值（避免 ServerDate 标记对象序列化问题）
+    const created = await db.collection('notes')
+      .where({ _id: addResult._id, _openid: openid })
+      .limit(1)
+      .get()
+
     return success({
-      note: projectNote({ _id: addResult._id, ...note }),
+      note: projectNote(created.data[0]),
     })
   }
 

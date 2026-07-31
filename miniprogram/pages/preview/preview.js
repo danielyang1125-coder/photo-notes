@@ -15,6 +15,7 @@ Page({
     showNoteEditor: false,
     editingNote: null,
     showTagPicker: false,
+    navTotalHeight: 0,
   },
 
   onLoad(options) {
@@ -26,8 +27,52 @@ Page({
       wx.navigateBack()
       return
     }
+    this._calcNavHeight()
     this.setData({ photoId })
     this.loadDetail()
+  },
+
+  _calcNavHeight() {
+    try {
+      const info = wx.getSystemInfoSync() || {}
+      const menu = wx.getMenuButtonBoundingClientRect()
+      const statusBarHeight = Number(info.statusBarHeight) || 20
+      const navBarHeight = (menu && menu.top > 0 && menu.height > 0)
+        ? Math.max(44, (menu.top - statusBarHeight) * 2 + menu.height)
+        : 44
+      this.setData({ navTotalHeight: statusBarHeight + navBarHeight })
+    } catch (e) {
+      this.setData({ navTotalHeight: 96 })
+    }
+  },
+
+  _fmtTime(val) {
+    if (!val) return ''
+    // 兼容 CloudBase ServerDate 序列化对象：{$date: timestamp}
+    if (typeof val === 'object' && val !== null) {
+      if (val.$date) { val = val.$date }
+      else if (val.offset) { val = Date.now() } // ServerDate offset 无法还原，用当前时间兜底
+      else { return '' }
+    }
+    const d = new Date(val)
+    if (isNaN(d.getTime())) return ''
+    const now = new Date()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const hh = String(d.getHours()).padStart(2, '0')
+    const min = String(d.getMinutes()).padStart(2, '0')
+    if (d.getFullYear() !== now.getFullYear()) {
+      return `${d.getFullYear()}-${mm}-${dd} ${hh}:${min}`
+    }
+    return `${mm}-${dd} ${hh}:${min}`
+  },
+
+  _fmtNoteTimes(notes) {
+    return (notes || []).map(n => ({
+      ...n,
+      created_at: this._fmtTime(n.created_at),
+      updated_at: this._fmtTime(n.updated_at),
+    }))
   },
 
   async loadDetail() {
@@ -56,7 +101,7 @@ Page({
         this.setData({
           photo: p,
           tags: d.tags || [],
-          notes: d.notes || [],
+          notes: this._fmtNoteTimes(d.notes),
           pageState: 'ready',
         })
         if (this._initialNoteCount === null) {
@@ -150,15 +195,14 @@ Page({
     const note = e.detail.note
     if (!note) return
     this.setData({ showNoteEditor: false, editingNote: null })
-    // 本地更新备注列表，避免 loadDetail() 导致页面闪烁
+    // 格式化时间并本地更新列表，避免 loadDetail() 导致页面闪烁
+    const formatted = { ...note, created_at: this._fmtTime(note.created_at), updated_at: this._fmtTime(note.updated_at) }
     const notes = [...this.data.notes]
-    const existingIndex = notes.findIndex(n => n._id === note._id)
+    const existingIndex = notes.findIndex(n => n._id === formatted._id)
     if (existingIndex >= 0) {
-      // 编辑模式：替换已有备注
-      notes[existingIndex] = note
+      notes[existingIndex] = formatted
     } else {
-      // 新增模式：插入到列表开头
-      notes.unshift(note)
+      notes.unshift(formatted)
     }
     this.setData({ notes })
   },

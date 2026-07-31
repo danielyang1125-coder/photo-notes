@@ -1,7 +1,7 @@
 <!-- PG-009 标签管理 -->
 <view class="page">
   <t-navbar title="标签管理" left-arrow bind:go-back="handleBack" />
-  <view class="content">
+  <view class="content" style="padding-top: {{navTotalHeight}}px;">
     <t-button theme="primary" block disabled="{{mutating || list.length >= 100}}" bind:tap="handleCreate">
       ＋ 新建标签
     </t-button>

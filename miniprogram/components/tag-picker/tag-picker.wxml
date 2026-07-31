@@ -6,11 +6,46 @@
       <text class="save-btn {{saving ? 'disabled' : ''}}" bind:tap="handleSave">{{saving ? '保存中…' : '完成'}}</text>
     </view>
     <view class="picker-body">
+      <!-- 搜索栏 -->
+      <view class="search-bar">
+        <view class="search-input-wrap">
+          <text class="search-icon">🔍</text>
+          <input
+            class="search-input"
+            placeholder="搜索或输入新标签名"
+            value="{{searchText}}"
+            bind:input="handleSearchInput"
+            confirm-type="search"
+          />
+          <text class="clear-btn" wx:if="{{searchText}}" bind:tap="handleClearSearch">✕</text>
+        </view>
+      </view>
+
       <view wx:if="{{loading}}" class="loading">加载中…</view>
-      <view wx:elif="{{allTags.length === 0}}" class="empty">暂无标签，请先创建</view>
+
+      <!-- 无标签且无搜索：提示前往创建 -->
+      <view wx:elif="{{allTags.length === 0 && !searchText}}" class="empty">暂无标签，请先创建</view>
+
+      <!-- 有搜索 + 可创建 + 无匹配标签：单独展示创建入口 -->
+      <view wx:elif="{{searchText && canCreate && filteredTags.length === 0}}" class="create-only">
+        <view class="create-entry" bind:tap="handleCreateTag">
+          <text class="create-icon">＋</text>
+          <text class="create-label">创建标签「{{searchText}}」</text>
+        </view>
+      </view>
+
+      <!-- 有搜索 + 无结果 + 不可创建 -->
+      <view wx:elif="{{searchText && filteredTags.length === 0 && !canCreate}}" class="empty">没有匹配的标签</view>
+
       <view wx:else class="tag-list">
+        <!-- 创建入口（搜索结果不为空时显示在列表顶部） -->
+        <view wx:if="{{searchText && canCreate}}" class="create-entry" bind:tap="handleCreateTag">
+          <text class="create-icon">＋</text>
+          <text class="create-label">创建标签「{{searchText}}」</text>
+        </view>
+
         <view
-          wx:for="{{allTags}}"
+          wx:for="{{filteredTags}}"
           wx:key="_id"
           class="tag-item {{selectedIds.indexOf(item._id) >= 0 ? 'selected' : ''}}"
           bind:tap="handleToggle"

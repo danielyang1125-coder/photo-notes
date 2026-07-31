@@ -150,14 +150,37 @@ function createTagHandlers(deps) {
   async function rename(openid, event) {
     const tagId = validation.string(event.tagId, { min: 1, max: 128 })
 
-    // 校验标签归属（不存在/他人 → TAG_NOT_FOUND）
-    await findOwnedResource(
+    // 校验标签归属（不存在/他人 → TAG_NOT_FOUND）；同时拿到当前 normalize_name
+    const currentTag = await findOwnedResource(
       db.collection('tags'),
       { _id: tagId, _openid: openid },
       'TAG_NOT_FOUND',
     )
 
     const { name: newName, normalizedName } = normalizeTagName(event.name)
+
+    // 规范化后名称未变（仅大小写或空格差异）→ 幂等成功
+    if (normalizedName === (currentTag.normalized_name || '')) {
+      // 若原始展示名也未变则无需任何更新
+      if (newName === (currentTag.name || '')) {
+        return success({ tag: projectTagSummary(currentTag) })
+      }
+      // 仅展示名不同（如纯大小写修正）→ 不走事务，直接更新
+      await db.collection('tags').doc(tagId).update({
+        data: { name: newName, updated_at: db.serverDate() },
+      })
+      const updated = await db.collection('tags').doc(tagId).get()
+      return success({ tag: projectTagSummary(updated.data) })
+    }
+
+    // 事务前预检：是否已有其他标签占用该名称（修复事务内 UPDATE 唯一冲突
+    // 在 commit 阶段抛出的错误码可能不被 isUniqueConflict 识别的问题）
+    const conflict = await db.collection('tags')
+      .where({ _openid: openid, normalized_name: normalizedName })
+      .get()
+    if ((conflict.data || []).some(t => t._id !== tagId)) {
+      throw new AppError('TAG_NAME_DUPLICATED')
+    }
 
     // 内容安全审核（fail-closed）
     if (isContentReviewEnabled()) {

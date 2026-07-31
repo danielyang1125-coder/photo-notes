@@ -49,6 +49,34 @@ Page({
     this.setData(patch)
   },
 
+  _fmtTime(val) {
+    if (!val) return ''
+    if (typeof val === 'object' && val !== null) {
+      if (val.$date) { val = val.$date }
+      else if (val.offset) { val = Date.now() }
+      else { return '' }
+    }
+    const d = new Date(val)
+    if (isNaN(d.getTime())) return ''
+    const now = new Date()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const hh = String(d.getHours()).padStart(2, '0')
+    const min = String(d.getMinutes()).padStart(2, '0')
+    if (d.getFullYear() !== now.getFullYear()) {
+      return `${d.getFullYear()}-${mm}-${dd} ${hh}:${min}`
+    }
+    return `${mm}-${dd} ${hh}:${min}`
+  },
+
+  _fmtNoteTimes(notes) {
+    return notes.map(n => ({
+      ...n,
+      created_at: this._fmtTime(n.created_at),
+      updated_at: this._fmtTime(n.updated_at),
+    }))
+  },
+
   loadNotes(reset) {
     if (reset) this._beginQuery(true)
     if (this.data.loadingMore) return
@@ -62,7 +90,7 @@ Page({
       .then(res => {
         if (snapshotVersion !== this._queryVersion) return
         if (res.result.code === 'SUCCESS') {
-          const incoming = res.result.data.list || []
+          const incoming = this._fmtNoteTimes(res.result.data.list || [])
           const base = reset ? [] : this.data.list
           const seen = new Set()
           const merged = [...base, ...incoming].filter(item => {

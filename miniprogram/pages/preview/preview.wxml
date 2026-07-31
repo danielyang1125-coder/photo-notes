@@ -11,7 +11,7 @@
   />
 
   <!-- 内容 -->
-  <scroll-view wx:if="{{pageState === 'ready'}}" class="content" scroll-y>
+  <scroll-view wx:if="{{pageState === 'ready'}}" class="content" scroll-y style="padding-top: {{navTotalHeight}}px; height: calc(100vh - {{navTotalHeight}}px);">
     <!-- 大图 -->
     <view class="image-area" bind:tap="handleViewImage">
       <image src="{{photo.preview_url}}" mode="widthFix" class="preview-image" />
