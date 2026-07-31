@@ -29,7 +29,7 @@
         <t-button size="small" theme="primary" variant="text" bind:tap="handleAddNote">添加</t-button>
       </view>
       <view wx:if="{{notes.length === 0}}" class="empty-notes">暂无备注</view>
-      <view wx:for="{{notes}}" wx:key="_id" class="note-item">
+      <view wx:for="{{notes}}" wx:key="_id" class="note-item" bind:tap="handleNoteTap" data-id="{{item._id}}">
         <text class="note-content">{{item.content}}</text>
         <view class="note-meta">
           <text class="note-time">{{item.created_at}}</text>
@@ -69,5 +69,23 @@
     cancel-btn="取消"
     bind:confirm="handleConfirmDelete"
     bind:cancel="handleCancelDelete"
+  />
+
+  <!-- 备注编辑器 -->
+  <note-editor
+    photoId="{{photoId}}"
+    note="{{editingNote}}"
+    visible="{{showNoteEditor}}"
+    bind:cancel="handleNoteCancel"
+    bind:confirm="handleNoteConfirm"
+    bind:conflict="handleNoteConflict"
+  />
+
+  <!-- 标签选择器 -->
+  <tag-picker
+    photoId="{{photoId}}"
+    visible="{{showTagPicker}}"
+    bind:close="handleTagPickerClose"
+    bind:confirm="handleTagPickerConfirm"
   />
 </view>

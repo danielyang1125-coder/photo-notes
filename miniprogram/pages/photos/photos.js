@@ -476,7 +476,21 @@ Page({
       if (!result.result || result.result.code !== 'SUCCESS') {
         throw new Error((result.result && result.result.message) || '添加失败')
       }
-      wx.showToast({ title: '标签已添加', icon: 'success' })
+      const data = result.result.data || {}
+      const successCount = Number(data.successCount) || 0
+      const invalidCount = Number(data.invalidCount) || 0
+      const limitExceededCount = Number(data.limitExceededCount) || 0
+      const parts = []
+      if (successCount > 0) parts.push(`${successCount} 张成功`)
+      if (invalidCount > 0) parts.push(`${invalidCount} 张不存在`)
+      if (limitExceededCount > 0) parts.push(`${limitExceededCount} 张标签已满`)
+      if (parts.length === 0) {
+        wx.showToast({ title: '标签已添加', icon: 'success' })
+      } else if (invalidCount === 0 && limitExceededCount === 0) {
+        wx.showToast({ title: '标签已添加', icon: 'success' })
+      } else {
+        wx.showToast({ title: parts.join('，'), icon: 'none', duration: 2500 })
+      }
       this._refreshQuickTags()
     } catch (error) {
       wx.showToast({ title: error.message || '添加标签失败', icon: 'none' })

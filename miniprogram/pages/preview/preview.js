@@ -1,5 +1,6 @@
 const app = getApp()
 const photosService = require('../../services/photos')
+const notesService = require('../../services/notes')
 
 Page({
   data: {
@@ -11,6 +12,9 @@ Page({
     showActionSheet: false,
     showDeleteConfirm: false,
     actionSheetItems: [{ label: '删除图片', color: '#E34D59' }],
+    showNoteEditor: false,
+    editingNote: null,
+    showTagPicker: false,
   },
 
   onLoad(options) {
@@ -59,7 +63,7 @@ Page({
           this._initialNoteCount = (d.notes || []).length
           this._initialTagIds = (d.tags || []).map(tag => tag._id).sort()
         }
-      } else if (res.result.code === 'NOT_FOUND') {
+      } else if (res.result.code === 'PHOTO_NOT_FOUND') {
         this.setData({ pageState: 'empty' })
       } else {
         this.setData({ pageState: 'error' })
@@ -100,13 +104,86 @@ Page({
   },
 
   handleEditTags() {
-    /* S5 实现：打开 tag-picker */
+    this.setData({ showTagPicker: true })
   },
 
-  handleAddNote() {
-    /* S7 实现：打开 note-editor */
-    console.log('handleAddNote')
+  handleTagPickerClose() {
+    this.setData({ showTagPicker: false })
   },
+
+  handleTagPickerConfirm(e) {
+    this.setData({ showTagPicker: false })
+    const { tags } = e.detail
+    if (tags) this.setData({ tags })
+  },
+
+  // === 备注操作 ===
+
+  handleAddNote() {
+    this.setData({ showNoteEditor: true, editingNote: null })
+  },
+
+  handleNoteTap(e) {
+    const noteId = e.currentTarget.dataset.id
+    const note = this.data.notes.find(n => n._id === noteId)
+    if (!note) return
+    wx.showActionSheet({
+      itemList: ['编辑', '删除'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          this.setData({ showNoteEditor: true, editingNote: note })
+        } else if (res.tapIndex === 1) {
+          this.handleNoteDelete(note)
+        }
+      },
+    })
+  },
+
+  handleNoteCancel() {
+    this.setData({ showNoteEditor: false, editingNote: null })
+  },
+
+  handleNoteConfirm(e) {
+    const note = e.detail.note
+    if (!note) return
+    this.setData({ showNoteEditor: false, editingNote: null })
+    // 刷新详情以获取最新数据
+    this.loadDetail()
+  },
+
+  handleNoteConflict(e) {
+    wx.showToast({ title: '内容已被他人更新，请重试', icon: 'none', duration: 2000 })
+    // 自动重试：用服务器返回的最新数据重新打开编辑器
+    const latestNote = e.detail.note
+    if (latestNote) {
+      this.setData({ editingNote: latestNote })
+    } else {
+      this.setData({ showNoteEditor: false, editingNote: null })
+      this.loadDetail()
+    }
+  },
+
+  async handleNoteDelete(note) {
+    const confirm = await new Promise(resolve => wx.showModal({
+      title: '删除备注',
+      content: '确认删除该备注？',
+      success: resolve,
+    }))
+    if (!confirm.confirm) return
+    try {
+      const res = await notesService.del(note._id)
+      if (res.result.code === 'SUCCESS') {
+        wx.showToast({ title: '已删除', icon: 'success' })
+        this.loadDetail()
+      } else {
+        wx.showToast({ title: (res.result.message) || '删除失败', icon: 'none' })
+      }
+    } catch (e) {
+      wx.showToast({ title: '网络异常', icon: 'none' })
+    }
+  },
+
+  // === 图片删除 ===
 
   handleDelete() {
     this.setData({ showDeleteConfirm: true })
@@ -127,6 +204,13 @@ Page({
         app.globalData.photoListChange = {
           photoId: this.data.photoId,
           changeType: 'deleted',
+        }
+        // 后台轮询删除进度
+        const taskId = res.result.data && res.result.data.taskId
+        if (taskId) {
+          photosService.pollDeleteStatus(taskId, {
+            onManualRequired: () => wx.showToast({ title: '删除遇到问题，请稍后重试', icon: 'none' }),
+          })
         }
         setTimeout(() => wx.navigateBack(), 500)
       } else {

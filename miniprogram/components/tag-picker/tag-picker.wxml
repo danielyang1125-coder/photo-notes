@@ -1,0 +1,26 @@
+<view class="mask" wx:if="{{visible}}" bind:tap="handleClose">
+  <view class="picker" catch:tap="">
+    <view class="picker-header">
+      <text class="cancel-btn" bind:tap="handleClose">取消</text>
+      <text class="title">选择标签（{{selectedIds.length}}/5）</text>
+      <text class="save-btn {{saving ? 'disabled' : ''}}" bind:tap="handleSave">{{saving ? '保存中…' : '完成'}}</text>
+    </view>
+    <view class="picker-body">
+      <view wx:if="{{loading}}" class="loading">加载中…</view>
+      <view wx:elif="{{allTags.length === 0}}" class="empty">暂无标签，请先创建</view>
+      <view wx:else class="tag-list">
+        <view
+          wx:for="{{allTags}}"
+          wx:key="_id"
+          class="tag-item {{selectedIds.indexOf(item._id) >= 0 ? 'selected' : ''}}"
+          bind:tap="handleToggle"
+          data-id="{{item._id}}"
+        >
+          <text class="tag-name">{{item.name}}</text>
+          <text class="tag-count">{{item.photo_count}}</text>
+          <view class="check-mark" wx:if="{{selectedIds.indexOf(item._id) >= 0}}">✓</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

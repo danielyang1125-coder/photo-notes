@@ -4,7 +4,8 @@
     "t-cell": "tdesign-miniprogram/cell/cell",
     "t-image": "tdesign-miniprogram/image/image",
     "t-tag": "tdesign-miniprogram/tag/tag",
-    "t-skeleton": "tdesign-miniprogram/skeleton/skeleton"
+    "t-skeleton": "tdesign-miniprogram/skeleton/skeleton",
+    "page-state": "../../components/page-state/page-state"
   },
   "navigationStyle": "custom"
 }

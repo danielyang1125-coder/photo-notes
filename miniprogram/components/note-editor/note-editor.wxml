@@ -1,0 +1,20 @@
+<view class="mask" wx:if="{{visible}}" bind:tap="handleCancel">
+  <view class="editor" catch:tap="">
+    <view class="editor-header">
+      <text class="cancel-btn" bind:tap="handleCancel">取消</text>
+      <text class="title">{{note ? '编辑备注' : '添加备注'}}</text>
+      <text class="confirm-btn {{saving ? 'disabled' : ''}}" bind:tap="handleConfirm">{{saving ? '保存中…' : '保存'}}</text>
+    </view>
+    <view class="editor-body">
+      <textarea
+        class="textarea"
+        value="{{content}}"
+        placeholder="输入备注内容…"
+        maxlength="1000"
+        auto-focus="{{true}}"
+        bindinput="handleInput"
+      />
+      <view class="error" wx:if="{{error}}">{{error}}</view>
+    </view>
+  </view>
+</view>

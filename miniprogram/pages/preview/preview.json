@@ -7,7 +7,9 @@
     "t-action-sheet": "tdesign-miniprogram/action-sheet/action-sheet",
     "t-dialog": "tdesign-miniprogram/dialog/dialog",
     "page-state": "../../components/page-state/page-state",
-    "photo-tag-section": "../../components/photo-tag-section/photo-tag-section"
+    "photo-tag-section": "../../components/photo-tag-section/photo-tag-section",
+    "note-editor": "../../components/note-editor/note-editor",
+    "tag-picker": "../../components/tag-picker/tag-picker"
   },
   "navigationStyle": "custom"
 }
