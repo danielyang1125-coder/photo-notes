@@ -5,7 +5,7 @@ const path = require('path')
 const { spawnSync } = require('child_process')
 
 const root = path.resolve(__dirname, '..')
-const excludedDirectories = new Set(['node_modules', '.git', 'quickstartFunctions'])
+const excludedDirectories = new Set(['node_modules', '.git'])
 
 function walk(directory) {
   const files = []

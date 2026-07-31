@@ -6,7 +6,7 @@ const crypto = require('crypto')
 
 const root = path.resolve(__dirname, '..')
 const sourceDirectory = path.join(root, 'cloudfunctions', '_shared')
-const excludedFunctions = new Set(['_shared', 'quickstartFunctions'])
+const excludedFunctions = new Set(['_shared'])
 const checkOnly = process.argv.includes('--check')
 
 function listFiles(directory) {

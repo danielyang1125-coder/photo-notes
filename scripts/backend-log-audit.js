@@ -16,7 +16,7 @@ const fs = require('fs')
 const path = require('path')
 
 const root = path.resolve(__dirname, '..')
-const excludedDirectories = new Set(['node_modules', '.git', 'quickstartFunctions'])
+const excludedDirectories = new Set(['node_modules', '.git'])
 
 // ---------------------------------------------------------------------------
 // 从 security-log.js 提取 ALLOWED_FIELDS
