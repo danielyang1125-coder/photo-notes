@@ -14,7 +14,7 @@
   <scroll-view wx:if="{{pageState === 'ready'}}" class="content" scroll-y>
     <!-- 大图 -->
     <view class="image-area" bind:tap="handleViewImage">
-      <image src="{{photo.compression_url}}" mode="widthFix" class="preview-image" />
+      <image src="{{photo.preview_url}}" mode="widthFix" class="preview-image" />
     </view>
 
     <!-- 标签区 -->

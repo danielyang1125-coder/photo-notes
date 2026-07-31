@@ -1,5 +1,5 @@
 <view class="mask" wx:if="{{visible}}" bind:tap="handleClose">
-  <view class="picker" catch:tap="">
+  <view class="picker" catch:tap="noop">
     <view class="picker-header">
       <text class="cancel-btn" bind:tap="handleClose">取消</text>
       <text class="title">选择标签（{{selectedIds.length}}/5）</text>

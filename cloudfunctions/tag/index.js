@@ -9,6 +9,7 @@ const config = require('./lib/shared/config')
 // ---------------------------------------------------------------------------
 // DEV-13 功能开关：冷启动配置校验（未配置或非法值导致部署失败）
 // ---------------------------------------------------------------------------
+config.boolean('CONTENT_REVIEW_ENABLED')
 config.boolean('PUBLIC_RESOURCE_ERROR_MASKING')
 
 const { createTagHandlers } = require('./handlers')
@@ -37,7 +38,12 @@ async function reviewContent(name, openid) {
   }
 }
 
-const tagHandlers = createTagHandlers({ db, reviewContent })
+const tagHandlers = createTagHandlers({
+  db,
+  isContentReviewEnabled: () =>
+    config.boolean('CONTENT_REVIEW_ENABLED'),
+  reviewContent,
+})
 
 exports.main = createBusinessMain({
   domain: 'tag',

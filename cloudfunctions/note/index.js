@@ -9,6 +9,7 @@ const config = require('./lib/shared/config')
 // ---------------------------------------------------------------------------
 // DEV-13 功能开关：冷启动配置校验（未配置或非法值导致部署失败）
 // ---------------------------------------------------------------------------
+config.boolean('CONTENT_REVIEW_ENABLED')
 config.boolean('CURSOR_PAGINATION_REQUIRED')
 config.boolean('PUBLIC_RESOURCE_ERROR_MASKING')
 
@@ -41,6 +42,8 @@ const noteHandlers = createNoteHandlers({
   db,
   getTempFileURL: (fileList) => cloud.getTempFileURL({ fileList }),
   cursorSecret: () => config.requiredString('CURSOR_HMAC_SECRET'),
+  isContentReviewEnabled: () =>
+    config.boolean('CONTENT_REVIEW_ENABLED'),
   reviewContent,
 })
 

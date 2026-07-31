@@ -22,6 +22,8 @@ Component({
   },
 
   methods: {
+    noop() {},
+
     async _loadData() {
       this.setData({ loading: true })
       try {

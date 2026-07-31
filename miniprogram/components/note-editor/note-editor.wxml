@@ -1,5 +1,5 @@
 <view class="mask" wx:if="{{visible}}" bind:tap="handleCancel">
-  <view class="editor" catch:tap="">
+  <view class="editor" catch:tap="noop">
     <view class="editor-header">
       <text class="cancel-btn" bind:tap="handleCancel">取消</text>
       <text class="title">{{note ? '编辑备注' : '添加备注'}}</text>

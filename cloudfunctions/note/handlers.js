@@ -9,7 +9,13 @@ const MAX_PAGE_SIZE = 20
 const MAX_SCAN_MULTIPLIER = 5
 
 function createNoteHandlers(deps) {
-  const { db, getTempFileURL, cursorSecret, reviewContent } = deps
+  const {
+    db,
+    getTempFileURL,
+    cursorSecret,
+    isContentReviewEnabled = () => true,
+    reviewContent,
+  } = deps
   const _ = db.command
 
   function resolveSecret() {
@@ -91,7 +97,9 @@ function createNoteHandlers(deps) {
     const photo = photoResult.data[0]
 
     // Content review
-    await reviewContent(content, openid)
+    if (isContentReviewEnabled()) {
+      await reviewContent(content, openid)
+    }
 
     const codePointCount = Array.from(content).length
     const note = {
@@ -121,7 +129,9 @@ function createNoteHandlers(deps) {
     const updatedAt = validation.isoDate(event.updatedAt) // REQUIRED — no fallback
 
     // Content review
-    await reviewContent(content, openid)
+    if (isContentReviewEnabled()) {
+      await reviewContent(content, openid)
+    }
 
     const codePointCount = Array.from(content).length
 

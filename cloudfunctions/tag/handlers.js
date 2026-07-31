@@ -70,7 +70,11 @@ function projectTagSummary(tag) {
 // 工厂函数
 // ============================================================
 function createTagHandlers(deps) {
-  const { db, reviewContent } = deps
+  const {
+    db,
+    isContentReviewEnabled = () => true,
+    reviewContent,
+  } = deps
   const _ = db.command
 
   // ==========================================================
@@ -101,7 +105,9 @@ function createTagHandlers(deps) {
     const { name, normalizedName } = normalizeTagName(event.name)
 
     // 内容安全审核（fail-closed：异常一律抛错）
-    await reviewContent(name, openid)
+    if (isContentReviewEnabled()) {
+      await reviewContent(name, openid)
+    }
 
     try {
       const result = await withTransactionRetry(db, async (transaction) => {
@@ -154,7 +160,9 @@ function createTagHandlers(deps) {
     const { name: newName, normalizedName } = normalizeTagName(event.name)
 
     // 内容安全审核（fail-closed）
-    await reviewContent(newName, openid)
+    if (isContentReviewEnabled()) {
+      await reviewContent(newName, openid)
+    }
 
     try {
       await withTransactionRetry(db, async (transaction) => {

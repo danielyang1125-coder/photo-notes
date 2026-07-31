@@ -83,12 +83,15 @@ Page({
         changeType: 'tagsChanged',
         tagIds: currentTagIds,
       }
-    } else if ((this.data.notes || []).length !== this._initialNoteCount) {
+      app.globalData.refreshPhotos = true
+    }
+    if ((this.data.notes || []).length !== this._initialNoteCount) {
       app.globalData.photoListChange = {
         photoId: this.data.photoId,
         changeType: 'noteCountChanged',
         noteCount: (this.data.notes || []).length,
       }
+      app.globalData.refreshNotes = true
     }
   },
 
@@ -97,7 +100,7 @@ Page({
   },
 
   handleViewImage() {
-    const { compression_url: url } = this.data.photo
+    const { preview_url: url } = this.data.photo
     if (url) {
       wx.previewImage({ urls: [url], current: url })
     }
@@ -147,8 +150,17 @@ Page({
     const note = e.detail.note
     if (!note) return
     this.setData({ showNoteEditor: false, editingNote: null })
-    // 刷新详情以获取最新数据
-    this.loadDetail()
+    // 本地更新备注列表，避免 loadDetail() 导致页面闪烁
+    const notes = [...this.data.notes]
+    const existingIndex = notes.findIndex(n => n._id === note._id)
+    if (existingIndex >= 0) {
+      // 编辑模式：替换已有备注
+      notes[existingIndex] = note
+    } else {
+      // 新增模式：插入到列表开头
+      notes.unshift(note)
+    }
+    this.setData({ notes })
   },
 
   handleNoteConflict(e) {
@@ -174,7 +186,9 @@ Page({
       const res = await notesService.del(note._id)
       if (res.result.code === 'SUCCESS') {
         wx.showToast({ title: '已删除', icon: 'success' })
-        this.loadDetail()
+        // 本地移除备注，避免 loadDetail() 导致页面闪烁
+        const notes = this.data.notes.filter(n => n._id !== note._id)
+        this.setData({ notes })
       } else {
         wx.showToast({ title: (res.result.message) || '删除失败', icon: 'none' })
       }

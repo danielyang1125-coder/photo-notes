@@ -30,6 +30,8 @@ Component({
   },
 
   methods: {
+    noop() {},
+
     handleInput(e) {
       this.setData({ content: e.detail.value || '', error: '' })
     },
@@ -47,8 +49,8 @@ Component({
         return
       }
       const validation = validateNoteContent(content)
-      if (validation !== true) {
-        this.setData({ error: validation })
+      if (!validation.valid) {
+        this.setData({ error: validation.error || '内容不合法' })
         return
       }
 

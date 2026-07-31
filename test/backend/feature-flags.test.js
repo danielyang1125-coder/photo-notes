@@ -67,15 +67,17 @@ test('ASYNC_PHOTO_DELETE_ENABLED enforced in photo function', () => {
 })
 
 // ---------------------------------------------------------------------------
-// CONTENT_REVIEW_ENABLED — upload 云函数（已有）
+// CONTENT_REVIEW_ENABLED — upload、note、tag 云函数
 // ---------------------------------------------------------------------------
-test('CONTENT_REVIEW_ENABLED enforced in upload function', () => {
-  const entry = readEntry('upload')
-  assert.match(
-    entry,
-    /config\.boolean\('CONTENT_REVIEW_ENABLED'\)/,
-    'upload/index.js must check CONTENT_REVIEW_ENABLED',
-  )
+test('CONTENT_REVIEW_ENABLED enforced in upload, note, tag functions', () => {
+  for (const domain of ['upload', 'note', 'tag']) {
+    const entry = readEntry(domain)
+    assert.match(
+      entry,
+      /config\.boolean\('CONTENT_REVIEW_ENABLED'\)/,
+      `${domain}/index.js must check CONTENT_REVIEW_ENABLED`,
+    )
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -104,7 +106,7 @@ test('note function does not check upload-only or delete-only flags', () => {
   )
 })
 
-test('tag, account, user functions only check PUBLIC_RESOURCE_ERROR_MASKING', () => {
+test('tag, account, user functions do not check unrelated flags', () => {
   for (const domain of ['tag', 'account', 'user']) {
     const entry = readEntry(domain)
     assert.doesNotMatch(

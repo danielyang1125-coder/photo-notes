@@ -10,11 +10,27 @@ Page({
     loadingMore: false,
     sortBy: 'created_at',
     sortOrder: 'desc',
+    navTotalHeight: 0,
   },
 
   onLoad() {
     this._queryVersion = 0
+    this._calcNavHeight()
     this.loadNotes(true)
+  },
+
+  _calcNavHeight() {
+    try {
+      const info = wx.getSystemInfoSync() || {}
+      const menu = wx.getMenuButtonBoundingClientRect()
+      const statusBarHeight = Number(info.statusBarHeight) || 20
+      const navBarHeight = (menu && menu.top > 0 && menu.height > 0)
+        ? Math.max(44, (menu.top - statusBarHeight) * 2 + menu.height)
+        : 44
+      this.setData({ navTotalHeight: statusBarHeight + navBarHeight })
+    } catch (e) {
+      this.setData({ navTotalHeight: 96 })
+    }
   },
 
   onShow() {
@@ -83,6 +99,12 @@ Page({
     if (this.data.hasMore && !this.data.loadingMore) {
       this.loadNotes(false)
     }
+  },
+
+  handleNoteTap(e) {
+    const photoId = e.currentTarget.dataset.photoId
+    if (!photoId) return
+    wx.navigateTo({ url: `/pages/preview/preview?photoId=${photoId}` })
   },
 
   handleRetry() {
