@@ -16,12 +16,22 @@ Page({
     editingNote: null,
     showTagPicker: false,
     navTotalHeight: 0,
+    // 滑动切换
+    photoIds: [],
+    currentIndex: 0,
+    swipeOffset: 0,
+    swiping: false,
+    hasSwipeContext: false,
   },
 
   onLoad(options) {
     this._deleted = false
     this._initialNoteCount = null
     this._initialTagIds = null
+    this._touchStartX = 0
+    this._touchStartY = 0
+    this._navigating = false
+
     const photoId = options.photoId
     if (!photoId) {
       wx.navigateBack()
@@ -29,6 +39,21 @@ Page({
     }
     this._calcNavHeight()
     this.setData({ photoId })
+
+    // 接收图片列表上下文（用于滑动切换）
+    const eventChannel = this.getOpenerEventChannel()
+    if (eventChannel) {
+      eventChannel.on('photoListContext', (ctx) => {
+        if (ctx && ctx.photoIds && ctx.photoIds.length > 1) {
+          this.setData({
+            photoIds: ctx.photoIds,
+            currentIndex: ctx.currentIndex || 0,
+            hasSwipeContext: true,
+          })
+        }
+      })
+    }
+
     this.loadDetail()
   },
 
@@ -120,9 +145,79 @@ Page({
   },
 
   onUnload() {
-    if (this._deleted || this._initialNoteCount === null) return
+    if (this._deleted) return
+    this._signalChanges()
+  },
+
+  // === 滑动切换 ===
+
+  handleTouchStart(e) {
+    if (!this.data.hasSwipeContext || this._navigating) return
+    const touch = e.touches[0]
+    this._touchStartX = touch.clientX
+    this._touchStartY = touch.clientY
+  },
+
+  handleTouchMove(e) {
+    if (!this.data.hasSwipeContext || this._navigating || !this._touchStartX) return
+    const touch = e.touches[0]
+    const dx = touch.clientX - this._touchStartX
+    const dy = Math.abs(touch.clientY - this._touchStartY)
+    // 仅水平滑动时处理（水平位移大于垂直位移）
+    if (Math.abs(dx) > dy && Math.abs(dx) > 10) {
+      this.setData({ swipeOffset: dx, swiping: true })
+    }
+  },
+
+  handleTouchEnd(e) {
+    if (!this.data.hasSwipeContext || this._navigating) {
+      this._touchStartX = 0
+      this._touchStartY = 0
+      return
+    }
+    const dx = this.data.swipeOffset
+    this.setData({ swipeOffset: 0, swiping: false })
+    this._touchStartX = 0
+    this._touchStartY = 0
+
+    const threshold = 80
+    if (dx < -threshold) {
+      // 左滑 → 下一张
+      this._navigateToIndex(this.data.currentIndex + 1)
+    } else if (dx > threshold) {
+      // 右滑 → 上一张
+      this._navigateToIndex(this.data.currentIndex - 1)
+    }
+  },
+
+  _navigateToIndex(index) {
+    if (index < 0 || index >= this.data.photoIds.length) return
+    if (index === this.data.currentIndex) return
+    const nextPhotoId = this.data.photoIds[index]
+    if (!nextPhotoId) return
+
+    this._navigating = true
+
+    // 记录当前页的变更信息
+    this._signalChanges()
+
+    this.setData({
+      photoId: nextPhotoId,
+      currentIndex: index,
+      pageState: 'loading',
+    }, () => {
+      this._initialNoteCount = null
+      this._initialTagIds = null
+      this.loadDetail().finally(() => {
+        this._navigating = false
+      })
+    })
+  },
+
+  _signalChanges() {
+    if (this._initialNoteCount === null) return
     const currentTagIds = (this.data.tags || []).map(tag => tag._id).sort()
-    if (JSON.stringify(currentTagIds) !== JSON.stringify(this._initialTagIds)) {
+    if (JSON.stringify(currentTagIds) !== JSON.stringify(this._initialTagIds || [])) {
       app.globalData.photoListChange = {
         photoId: this.data.photoId,
         changeType: 'tagsChanged',
@@ -138,6 +233,8 @@ Page({
       }
       app.globalData.refreshNotes = true
     }
+    this._initialNoteCount = null
+    this._initialTagIds = null
   },
 
   handleBack() {
@@ -146,9 +243,12 @@ Page({
 
   handleViewImage() {
     const { preview_url: url } = this.data.photo
-    if (url) {
-      wx.previewImage({ urls: [url], current: url })
-    }
+    if (!url) return
+    // 有列表上下文时传入全部预览 URL，支持全屏左右滑动
+    const urls = this.data.hasSwipeContext && this.data.photoIds.length > 1
+      ? this.data.photoIds.map(() => url) // 暂用当前 URL 占位，后续可优化为预加载
+      : [url]
+    wx.previewImage({ urls, current: url })
   },
 
   handleEditTags() {

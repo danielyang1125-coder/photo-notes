@@ -24,7 +24,7 @@
           </text>
         </view>
         <t-button
-          wx:if="{{item.status === 'failed'}}"
+          wx:if="{{item.status === 'failed' && item.canRetry !== false}}"
           size="small"
           variant="text"
           theme="primary"
@@ -68,5 +68,12 @@
     cancel-btn="继续上传"
     bind:confirm="handleConfirmLeave"
     bind:cancel="handleCancelLeave"
+  />
+  <!-- 标签选择器（批量模式） -->
+  <tag-picker
+    photoIds="{{batchPhotoIds}}"
+    visible="{{showTagPicker}}"
+    bind:close="handleTagPickerClose"
+    bind:confirm="handleTagPickerConfirm"
   />
 </t-popup>

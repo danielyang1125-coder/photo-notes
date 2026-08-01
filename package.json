@@ -3,12 +3,14 @@
   "private": true,
   "devDependencies": {
     "@cloudbase/manager-node": "5.6.5",
-    "@cloudbase/node-sdk": "3.18.3"
+    "@cloudbase/node-sdk": "3.18.3",
+    "miniprogram-automator": "^0.12.1"
   },
   "scripts": {
     "backend:sync": "node scripts/sync-cloudfunction-shared.js",
     "backend:check": "node scripts/backend-check.js",
-    "backend:test": "npm run backend:sync && node --test test/backend",
-    "backend:audit": "npm run backend:check && npm run backend:test && node scripts/backend-audit.js"
+    "backend:test": "npm run backend:sync && node --test \"test/backend/*.test.js\"",
+    "backend:audit": "npm run backend:check && npm run backend:test && node scripts/backend-audit.js",
+    "frontend:test": "node --test \"test/frontend/smoke.test.js\""
   }
 }

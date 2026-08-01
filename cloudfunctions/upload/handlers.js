@@ -400,13 +400,26 @@ function createUploadAttemptHandlers(options) {
     }
     const activePath =
       `photos/active/${normalizeRandomHex(randomHex)}.${processed.extension}`
+    // 带重试的上传：云存储高并发下可能瞬时失败，重试大概率成功
     let uploaded
-    try {
-      uploaded = await uploadFile(activePath, processed.buffer)
-    } catch (_) {
-      throw new AppError('INTERNAL_ERROR')
+    let lastError
+    const maxRetries = 3
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        uploaded = await uploadFile(activePath, processed.buffer)
+        if (uploaded && typeof uploaded.fileID === 'string' && uploaded.fileID) {
+          break
+        }
+        lastError = new Error('uploadFile returned invalid result')
+      } catch (err) {
+        lastError = err
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt)))
+        }
+      }
     }
     if (!uploaded || typeof uploaded.fileID !== 'string' || !uploaded.fileID) {
+      console.error('[createPromotion] uploadFile failed after retries:', lastError)
       throw new AppError('INTERNAL_ERROR')
     }
     return {

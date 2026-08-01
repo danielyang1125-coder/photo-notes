@@ -4,6 +4,7 @@ const { TAG_NAME_MAX_LENGTH, TAG_MAX_COUNT, RESERVED_TAG_NAMES } = require('../.
 Component({
   properties: {
     photoId: { type: String, value: '' },
+    photoIds: { type: Array, value: [] },
     visible: { type: Boolean, value: false },
   },
 
@@ -16,11 +17,12 @@ Component({
     searchText: '',
     canCreate: false,
     creating: false,
+    isBatch: false,
   },
 
   observers: {
-    'visible, photoId'(visible, photoId) {
-      if (visible && photoId) {
+    'visible, photoId, photoIds'(visible, photoId, photoIds) {
+      if (visible && (photoId || (photoIds && photoIds.length > 0))) {
         this._loadData()
       }
     },
@@ -30,16 +32,21 @@ Component({
     noop() {},
 
     async _loadData() {
-      this.setData({ loading: true, searchText: '', filteredTags: [] })
+      const photoIds = this.properties.photoIds || []
+      const isBatch = photoIds.length > 0
+      this.setData({ loading: true, searchText: '', filteredTags: [], isBatch })
+
       try {
         const [allRes, photoRes] = await Promise.all([
           tagsService.list('ALL'),
-          tagsService.getPhotoTags(this.properties.photoId),
+          isBatch
+            ? Promise.resolve(null)
+            : tagsService.getPhotoTags(this.properties.photoId),
         ])
         const allTags = (allRes.result && allRes.result.code === 'SUCCESS')
           ? (allRes.result.data.list || [])
           : []
-        const photoTags = (photoRes.result && photoRes.result.code === 'SUCCESS')
+        const photoTags = (!isBatch && photoRes && photoRes.result && photoRes.result.code === 'SUCCESS')
           ? (photoRes.result.data.tags || [])
           : []
         const selectedIds = photoTags.map(t => t._id)
@@ -164,13 +171,58 @@ Component({
     async handleSave() {
       if (this.data.saving) return
 
-      // 计算 diff
+      const isBatch = this.data.isBatch
+      const selected = this.data.selectedIds
+
+      // 批量模式：使用 batchAddPhotoTags
+      if (isBatch) {
+        if (selected.length === 0) {
+          this.triggerEvent('close')
+          return
+        }
+        this.setData({ saving: true })
+        try {
+          const requestId = `batch_tag_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+          const res = await tagsService.batchAddPhotoTags(
+            this.properties.photoIds,
+            selected,
+            requestId,
+          )
+          if (res.result && res.result.code === 'SUCCESS') {
+            const data = res.result.data || {}
+            const successCount = Number(data.successCount) || 0
+            const invalidCount = Number(data.invalidCount) || 0
+            const limitExceededCount = Number(data.limitExceededCount) || 0
+            const parts = []
+            if (successCount > 0) parts.push(`${successCount} 张成功`)
+            if (invalidCount > 0) parts.push(`${invalidCount} 张不存在`)
+            if (limitExceededCount > 0) parts.push(`${limitExceededCount} 张标签已满`)
+            if (parts.length === 0 || (invalidCount === 0 && limitExceededCount === 0)) {
+              wx.showToast({ title: '标签已添加', icon: 'success' })
+            } else {
+              wx.showToast({ title: parts.join('，'), icon: 'none', duration: 2500 })
+            }
+            // 通知标签列表刷新
+            try { getApp().globalData.refreshTags = true } catch (_) {}
+            this.triggerEvent('confirm', {})
+          } else {
+            const msg = (res.result && res.result.message) || '添加失败'
+            wx.showToast({ title: msg, icon: 'none' })
+          }
+        } catch (e) {
+          wx.showToast({ title: '网络异常', icon: 'none' })
+        } finally {
+          this.setData({ saving: false })
+        }
+        return
+      }
+
+      // 单图模式：计算 diff
       const photoRes = await tagsService.getPhotoTags(this.properties.photoId)
       const currentIds = (photoRes.result && photoRes.result.code === 'SUCCESS')
         ? (photoRes.result.data.tags || []).map(t => t._id)
         : []
 
-      const selected = this.data.selectedIds
       const addTagIds = selected.filter(id => !currentIds.includes(id))
       const removeTagIds = currentIds.filter(id => !selected.includes(id))
 

@@ -25,3 +25,6 @@ npm-debug.log*
 .env
 .env.local
 .env.*.local
+
+# 测试生成物（测试图片素材较大，按需用 scripts/generate-test-images.py 生成）
+test/fixtures/

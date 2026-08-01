@@ -292,7 +292,17 @@ Page({
     const photoId = e.detail.photoId
     if (!photoId) return
     this.setData({ scrollTop: this._currentScrollTop })
-    wx.navigateTo({ url: `/pages/preview/preview?photoId=${photoId}` })
+    const photoIds = this.data.list.map(p => p._id)
+    const currentIndex = photoIds.indexOf(photoId)
+    wx.navigateTo({
+      url: `/pages/preview/preview?photoId=${photoId}`,
+      success: (res) => {
+        res.eventChannel.emit('photoListContext', {
+          photoIds,
+          currentIndex: currentIndex >= 0 ? currentIndex : 0,
+        })
+      },
+    })
   },
 
   _applyPhotoChange() {
@@ -445,55 +455,4 @@ Page({
     }
   },
 
-  async handleUploadAddTags(e) {
-    const photoIds = (e.detail && e.detail.photoIds) || []
-    if (photoIds.length === 0) return
-    try {
-      const listResult = await tagsService.list('ALL')
-      if (!listResult.result || listResult.result.code !== 'SUCCESS') throw new Error('标签加载失败')
-      const tags = listResult.result.data.list || []
-      if (tags.length === 0) {
-        wx.showToast({ title: '请先创建标签', icon: 'none' })
-        return
-      }
-      const modal = await new Promise(resolve => wx.showModal({
-        title: '为本批图片添加标签',
-        content: '请输入已有标签的完整名称',
-        editable: true,
-        placeholderText: '标签名称',
-        confirmText: '添加',
-        success: resolve,
-        fail: () => resolve({ confirm: false }),
-      }))
-      if (!modal.confirm) return
-      const tag = tags.find(item => item.name === (modal.content || '').trim())
-      if (!tag) {
-        wx.showToast({ title: '未找到该标签', icon: 'none' })
-        return
-      }
-      const requestId = `batch_tag_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      const result = await tagsService.batchAddPhotoTags(photoIds, [tag._id], requestId)
-      if (!result.result || result.result.code !== 'SUCCESS') {
-        throw new Error((result.result && result.result.message) || '添加失败')
-      }
-      const data = result.result.data || {}
-      const successCount = Number(data.successCount) || 0
-      const invalidCount = Number(data.invalidCount) || 0
-      const limitExceededCount = Number(data.limitExceededCount) || 0
-      const parts = []
-      if (successCount > 0) parts.push(`${successCount} 张成功`)
-      if (invalidCount > 0) parts.push(`${invalidCount} 张不存在`)
-      if (limitExceededCount > 0) parts.push(`${limitExceededCount} 张标签已满`)
-      if (parts.length === 0) {
-        wx.showToast({ title: '标签已添加', icon: 'success' })
-      } else if (invalidCount === 0 && limitExceededCount === 0) {
-        wx.showToast({ title: '标签已添加', icon: 'success' })
-      } else {
-        wx.showToast({ title: parts.join('，'), icon: 'none', duration: 2500 })
-      }
-      this._refreshQuickTags()
-    } catch (error) {
-      wx.showToast({ title: error.message || '添加标签失败', icon: 'none' })
-    }
-  },
 })

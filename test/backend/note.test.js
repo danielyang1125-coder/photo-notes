@@ -1178,3 +1178,116 @@ test('list: last page continuation works correctly', async () => {
   assert.equal(r2.data.list.length, 2)
   assert.equal(r2.data.hasMore, false)
 })
+
+// =========================================================================
+// concurrency tests — TC-CONSIST-001 (§16.4)
+// =========================================================================
+
+test('concurrent update with same updatedAt — one succeeds, one conflicts (optimistic lock)', async () => {
+  // Simulates TC-NOTE-015 / TC-CONSIST-001: two devices edit the same note
+  // simultaneously, both holding the same updatedAt version. One must win,
+  // the other must receive a conflict (no silent overwrite).
+  const originalUpdatedAt = new Date('2026-07-25T10:00:00.000Z')
+  const db = createNoteDb({
+    notes: [noteDoc('note-1', {
+      updated_at: originalUpdatedAt,
+      content: 'Original content',
+    })],
+    photos: [photo('photo-1')],
+  })
+  const handlers = makeHandlers(db)
+
+  const updateInput = {
+    noteId: 'note-1',
+    content: 'Concurrent update attempt',
+    updatedAt: originalUpdatedAt.toISOString(),
+  }
+
+  // Fire two concurrent updates from two "devices"
+  const results = await Promise.allSettled([
+    handlers.update('u1', { ...updateInput, content: 'Device A update' }),
+    handlers.update('u1', { ...updateInput, content: 'Device B update' }),
+  ])
+
+  // Exactly one should succeed (not rejected), one should return conflict
+  const succeeded = results.filter(
+    (r) => r.status === 'fulfilled' && r.value.data.conflict !== true,
+  )
+  const conflicted = results.filter(
+    (r) => r.status === 'fulfilled' && r.value.data.conflict === true,
+  )
+  const rejected = results.filter((r) => r.status === 'rejected')
+
+  assert.equal(succeeded.length, 1, 'exactly one update should succeed')
+  assert.equal(conflicted.length, 1, 'exactly one update should return conflict')
+  assert.equal(rejected.length, 0, 'no update should throw')
+
+  // The successful update reflects the correct content
+  const winnerContent = succeeded[0].value.data.note.content
+  assert.ok(
+    winnerContent === 'Device A update' || winnerContent === 'Device B update',
+    'winner content should be from one of the two devices',
+  )
+
+  // Conflict response should show current (winner's) content, not original
+  const conflictNote = conflicted[0].value.data.note
+  assert.equal(conflictNote.content, winnerContent,
+    'conflict response should return the winning content')
+
+  // Verify only one actual update happened in the store
+  const stored = db._stores.notes.get('note-1')
+  assert.equal(stored.content, winnerContent)
+  assert.equal(stored.updated_at.getTime(), db.SERVER_DATE.getTime())
+})
+
+test('concurrent update — triple conflict, last device wins', async () => {
+  // Simulates TC-NOTE-018: device A selects "continue submit",
+  // but device C also modifies during the re-submit window.
+  const originalUpdatedAt = new Date('2026-07-25T10:00:00.000Z')
+  const db = createNoteDb({
+    notes: [noteDoc('note-1', {
+      updated_at: originalUpdatedAt,
+      content: 'Original',
+    })],
+    photos: [photo('photo-1')],
+  })
+  const handlers = makeHandlers(db)
+
+  // Round 1: A and B both try to update
+  const [rA1, rB] = await Promise.all([
+    handlers.update('u1', {
+      noteId: 'note-1',
+      content: 'Device A first attempt',
+      updatedAt: originalUpdatedAt.toISOString(),
+    }),
+    handlers.update('u1', {
+      noteId: 'note-1',
+      content: 'Device B update',
+      updatedAt: originalUpdatedAt.toISOString(),
+    }),
+  ])
+
+  // One wins, one conflicts
+  const round1Winner = rA1.data.conflict ? rB : rA1
+  const round1Conflict = rA1.data.conflict ? rA1 : rB
+  assert.equal(round1Conflict.data.conflict, true)
+
+  // Device A chooses "continue submit" with current updated_at
+  const currentUpdatedAt = round1Conflict.data.note.updated_at
+  const rA2 = await handlers.update('u1', {
+    noteId: 'note-1',
+    content: 'Device A overwrite',
+    updatedAt: currentUpdatedAt instanceof Date
+      ? currentUpdatedAt.toISOString()
+      : currentUpdatedAt,
+  })
+
+  // A's re-submit should succeed (uses current version)
+  assert.equal(rA2.code, 'SUCCESS')
+  assert.equal(rA2.data.conflict, undefined)
+  assert.equal(rA2.data.note.content, 'Device A overwrite')
+
+  // Final state: A's overwrite content is stored
+  const stored = db._stores.notes.get('note-1')
+  assert.equal(stored.content, 'Device A overwrite')
+})

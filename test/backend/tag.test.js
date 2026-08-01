@@ -1384,3 +1384,197 @@ test('batchAdd: returns tag summaries', async () => {
   assert.ok(!('normalized_name' in result.data.tags[0]))
   assert.ok(!('_openid' in result.data.tags[0]))
 })
+
+// ===========================================================================
+// concurrency tests — TC-CONSIST-002, TC-CONSIST-003 (§16.4)
+// ===========================================================================
+
+test('concurrent tag creation with same name — one succeeds, one duplicated', async () => {
+  // TC-CONSIST-002: two devices create the same tag name simultaneously.
+  // Only one should win; the other receives TAG_NAME_DUPLICATED.
+  const db = createTagDb({ tags: [] })
+  const handlers = makeHandlers(db)
+
+  const results = await Promise.allSettled([
+    handlers.create('u1', { name: '新标签' }),
+    handlers.create('u1', { name: '新标签' }),
+  ])
+
+  const succeeded = results.filter((r) => r.status === 'fulfilled')
+  const rejected = results.filter(
+    (r) => r.status === 'rejected' && r.reason.code === 'TAG_NAME_DUPLICATED',
+  )
+
+  assert.equal(succeeded.length, 1, 'exactly one create should succeed')
+  assert.equal(rejected.length, 1, 'exactly one create should be rejected as duplicate')
+
+  // Verify only one tag exists in the store
+  const tags = [...db._stores.tags.values()]
+  assert.equal(tags.length, 1)
+  assert.equal(tags[0].name, '新标签')
+  assert.equal(tags[0].normalized_name, '新标签')
+})
+
+test('concurrent create with case-variant names — one wins, one duplicated', async () => {
+  // TC-CONSIST-002 edge: same logical name, different casing
+  const db = createTagDb({ tags: [] })
+  const handlers = makeHandlers(db)
+
+  const results = await Promise.allSettled([
+    handlers.create('u1', { name: 'Travel' }),
+    handlers.create('u1', { name: 'travel' }),
+  ])
+
+  const succeeded = results.filter((r) => r.status === 'fulfilled')
+  const rejected = results.filter(
+    (r) => r.status === 'rejected' && r.reason.code === 'TAG_NAME_DUPLICATED',
+  )
+
+  assert.equal(succeeded.length, 1, 'exactly one create should succeed')
+  assert.equal(rejected.length, 1, 'case variant should be rejected as duplicate')
+  assert.equal(db._stores.tags.size, 1)
+})
+
+test('concurrent updatePhotoTags on same photo — both adds succeed', async () => {
+  // TC-CONSIST-003: two devices add different tags to the same photo
+  // simultaneously. Both should succeed and the photo ends up with both.
+  const db = createTagDb({
+    photos: [seedPhoto('photo-1')],
+    tags: [
+      seedTag('tag-1', { name: 'Travel', normalized_name: 'travel' }),
+      seedTag('tag-2', { name: 'Food', normalized_name: 'food' }),
+    ],
+  })
+  const handlers = makeHandlers(db)
+
+  const results = await Promise.all([
+    handlers.updatePhotoTags('u1', {
+      photoId: 'photo-1',
+      addTagIds: ['tag-1'],
+    }),
+    handlers.updatePhotoTags('u1', {
+      photoId: 'photo-1',
+      addTagIds: ['tag-2'],
+    }),
+  ])
+
+  assert.equal(results.length, 2)
+  assert.equal(results[0].code, 'SUCCESS')
+  assert.equal(results[1].code, 'SUCCESS')
+
+  // Photo should have both tags
+  const getResult = await handlers.getPhotoTags('u1', { photoId: 'photo-1' })
+  const tagNames = getResult.data.tags.map((t) => t.name).sort()
+  assert.deepEqual(tagNames, ['Food', 'Travel'])
+
+  // Only 2 relations should exist (not duplicated)
+  const relations = [...db._stores.photo_tags.values()].filter(
+    (r) => r.photo_id === 'photo-1',
+  )
+  assert.equal(relations.length, 2)
+
+  // tag photo_count should be correct
+  assert.equal(db._stores.tags.get('tag-1').photo_count, 1)
+  assert.equal(db._stores.tags.get('tag-2').photo_count, 1)
+})
+
+test('concurrent updatePhotoTags — same tag added twice, idempotent', async () => {
+  // TC-CONSIST-003 edge: two devices add the same tag concurrently.
+  // Only one association is created.
+  const db = createTagDb({
+    photos: [seedPhoto('photo-1')],
+    tags: [
+      seedTag('tag-1', { name: 'Travel', normalized_name: 'travel' }),
+    ],
+  })
+  const handlers = makeHandlers(db)
+
+  const results = await Promise.all([
+    handlers.updatePhotoTags('u1', {
+      photoId: 'photo-1',
+      addTagIds: ['tag-1'],
+    }),
+    handlers.updatePhotoTags('u1', {
+      photoId: 'photo-1',
+      addTagIds: ['tag-1'],
+    }),
+  ])
+
+  assert.equal(results[0].code, 'SUCCESS')
+  assert.equal(results[1].code, 'SUCCESS')
+
+  // Only 1 relation exists (idempotent)
+  const relations = [...db._stores.photo_tags.values()].filter(
+    (r) => r.photo_id === 'photo-1',
+  )
+  assert.equal(relations.length, 1, 'should be exactly 1 relation, not duplicated')
+
+  // tag photo_count should be 1, not 2
+  assert.equal(db._stores.tags.get('tag-1').photo_count, 1)
+
+  // Photo tag_count should be 1
+  assert.equal(db._stores.photos.get('photo-1').tag_count, 1)
+})
+
+test('concurrent updatePhotoTags — add + remove concurrently', async () => {
+  // TC-CONSIST-003: one device adds a tag while another removes a different
+  // tag on the same photo. Both operations should compose correctly.
+  const db = createTagDb({
+    photos: [seedPhoto('photo-1')],
+    tags: [
+      seedTag('tag-1', { name: 'Travel', normalized_name: 'travel' }),
+      seedTag('tag-2', { name: 'Food', normalized_name: 'food' }),
+    ],
+    photo_tags: [
+      {
+        _id: 'rel-2',
+        _openid: 'u1',
+        photo_id: 'photo-1',
+        tag_id: 'tag-2',
+        photo_upload_time: new Date('2026-07-15T10:00:00.000Z'),
+        created_at: new Date('2026-07-29T10:00:00.000Z'),
+      },
+    ],
+  })
+
+  // Seed correct initial counts
+  const t2 = db._stores.tags.get('tag-2')
+  t2.photo_count = 1
+  const p = db._stores.photos.get('photo-1')
+  p.tag_count = 1
+
+  const handlers = makeHandlers(db)
+
+  // Device A adds tag-1, Device B removes tag-2 — concurrent
+  const results = await Promise.all([
+    handlers.updatePhotoTags('u1', {
+      photoId: 'photo-1',
+      addTagIds: ['tag-1'],
+    }),
+    handlers.updatePhotoTags('u1', {
+      photoId: 'photo-1',
+      removeTagIds: ['tag-2'],
+    }),
+  ])
+
+  assert.equal(results[0].code, 'SUCCESS')
+  assert.equal(results[1].code, 'SUCCESS')
+
+  // Final state: tag-1 added, tag-2 removed
+  const getResult = await handlers.getPhotoTags('u1', { photoId: 'photo-1' })
+  const tagNames = getResult.data.tags.map((t) => t.name).sort()
+  assert.deepEqual(tagNames, ['Travel'],
+    'should have only Travel (tag-1 added, tag-2 removed)')
+
+  // Verify relations
+  const relations = [...db._stores.photo_tags.values()].filter(
+    (r) => r.photo_id === 'photo-1',
+  )
+  assert.equal(relations.length, 1)
+  assert.equal(relations[0].tag_id, 'tag-1')
+
+  // Verify counts
+  assert.equal(db._stores.tags.get('tag-1').photo_count, 1)
+  assert.equal(db._stores.tags.get('tag-2').photo_count, 0)
+  assert.equal(db._stores.photos.get('photo-1').tag_count, 1)
+})

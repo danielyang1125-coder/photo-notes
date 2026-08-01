@@ -2,7 +2,8 @@
   <view class="picker" catch:tap="noop">
     <view class="picker-header">
       <text class="cancel-btn" bind:tap="handleClose">取消</text>
-      <text class="title">选择标签（{{selectedIds.length}}/5）</text>
+      <text class="title" wx:if="{{!isBatch}}">选择标签（{{selectedIds.length}}/5）</text>
+      <text class="title" wx:else>为本批图片添加标签（{{photoIds.length}}张）</text>
       <text class="save-btn {{saving ? 'disabled' : ''}}" bind:tap="handleSave">{{saving ? '保存中…' : '完成'}}</text>
     </view>
     <view class="picker-body">

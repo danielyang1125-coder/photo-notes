@@ -5,3 +5,15 @@
 .empty-hint { color:#ccc; font-size:24rpx; margin-top:8rpx; }
 .list { background:#fff; }
 .loadmore-hint { text-align: center; padding: 24rpx; font-size: 24rpx; color: #999; }
+/* 备注内容最多展示3行，超出省略 */
+.note-title-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.6;
+}

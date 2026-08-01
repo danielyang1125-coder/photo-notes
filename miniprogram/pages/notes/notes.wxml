@@ -4,7 +4,8 @@
   <view class="content" style="padding-top: {{navTotalHeight}}px;">
     <page-state wx:if="{{pageState !== 'ready'}}" state="{{pageState}}" emptyText="还没有备注" bind:retry="handleRetry" />
     <view wx:else class="list">
-      <t-cell wx:for="{{list}}" wx:key="_id" title="{{item.content}}" description="{{item.created_at}}" hover bind:tap="handleNoteTap" data-photo-id="{{item.photo_id}}">
+      <t-cell wx:for="{{list}}" wx:key="_id" description="{{item.created_at}}" hover bind:tap="handleNoteTap" data-photo-id="{{item.photo_id}}">
+        <view slot="title" class="note-title-clamp">{{item.content}}</view>
         <t-image slot="left-icon" src="{{item.thumbnail_url}}" mode="aspectFill" width="72" height="72" shape="round" />
         <t-tag slot="note" wx:if="{{item.updated_at > item.created_at}}" theme="warning" size="small">已编辑</t-tag>
       </t-cell>

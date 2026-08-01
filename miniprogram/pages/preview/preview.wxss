@@ -1,7 +1,22 @@
 .page { min-height:100vh; background:#000; display:flex; flex-direction:column; }
 .content { flex:1; }
-.image-area { width:100%; cursor:pointer; }
+.image-area { width:100%; cursor:pointer; position:relative; transition: transform 0.15s ease-out; }
+.image-area.swiping { transition: none; }
 .preview-image { width:100%; display:block; }
+/* 位置指示器 */
+.swipe-indicator {
+  position: absolute;
+  bottom: 20rpx;
+  right: 20rpx;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 24rpx;
+  padding: 6rpx 20rpx;
+}
+.swipe-indicator text {
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 1.6;
+}
 .section { background:#fff; padding:24rpx; margin-top:16rpx; }
 .section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16rpx; }
 .section-title { font-size:30rpx; font-weight:600; }

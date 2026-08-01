@@ -8,6 +8,13 @@ const ACTIVE_STATUS = ['pending', 'compressing', 'uploading', 'confirming']
 const FINAL_STATUS = ['success', 'failed', 'cancelled']
 const UPLOAD_TIMEOUT_MS = 120000 // 单文件上传超时 2 分钟
 
+// 需要生成新 requestId 才能重试的错误（原 attempt 已进入终端状态）
+const TERMINAL_ATTEMPT_CODES = ['UPLOAD_ATTEMPT_EXPIRED', 'UPLOAD_ATTEMPT_CANCELED', 'UPLOAD_ATTEMPT_NOT_FOUND']
+// 需要等待后重试的错误（服务端正持有确认租约）
+const LEASE_HELD_CODES = ['UPLOAD_CONFIRM_IN_PROGRESS']
+// 确定性失败，重试无意义
+const DETERMINISTIC_FAILURE_MESSAGES = ['不支持的格式', '超过']
+
 Component({
   properties: {
     visible: { type: Boolean, value: false },
@@ -17,6 +24,8 @@ Component({
     tasks: [],
     maxCount: C.UPLOAD_MAX_COUNT,
     showLeaveConfirm: false,
+    showTagPicker: false,
+    batchPhotoIds: [],
     totalCount: 0,
     uploadedCount: 0,
     successCount: 0,
@@ -157,7 +166,7 @@ Component({
     async _runTask(taskId, generation) {
       const initialTask = this._getTask(taskId)
       if (!initialTask) return
-      this._updateTask(taskId, { status: 'compressing', error: '', progress: 0 })
+      this._updateTask(taskId, { status: 'compressing', error: '', errorCode: '', progress: 0 })
       let uploadedFileId = ''
       let attemptId = ''
       try {
@@ -169,10 +178,17 @@ Component({
         const prepareResult = await uploadService.prepare({ taskId: initialTask.requestId })
         if (!this._isRunnable(taskId, generation)) return
         if (prepareResult.result.code !== 'SUCCESS') {
-          const msg = prepareResult.result.code === 'UPLOAD_DUPLICATED'
+          const code = prepareResult.result.code
+          const msg = code === 'UPLOAD_DUPLICATED'
             ? '任务重复'
             : prepareResult.result.message || '准备上传失败'
-          this._updateTask(taskId, { status: 'failed', error: msg })
+          const isTerminal = TERMINAL_ATTEMPT_CODES.includes(code)
+          this._updateTask(taskId, {
+            status: 'failed',
+            error: msg,
+            errorCode: code,
+            canRetry: isTerminal, // 终端状态可通过换 requestId 重试
+          })
           return
         }
         attemptId = prepareResult.result.data.attemptId
@@ -245,16 +261,34 @@ Component({
             photoId: confirmResult.result.data.photo._id,
           })
         } else {
-          const message = confirmResult.result.code === 'SPACE_EXCEEDED'
-            ? '存储空间不足'
-            : confirmResult.result.code === 'CONTENT_REVIEW_FAILED'
-              ? '内容不合规'
-              : confirmResult.result.message || '处理失败'
-          this._updateTask(taskId, { status: 'failed', error: message })
+          const code = confirmResult.result.code
+          let message
+          if (code === 'SPACE_EXCEEDED') {
+            message = '存储空间不足'
+          } else if (code === 'CONTENT_REVIEW_FAILED') {
+            message = '内容不合规'
+          } else {
+            message = confirmResult.result.message || '处理失败'
+          }
+          const isLeaseHeld = LEASE_HELD_CODES.includes(code)
+          this._updateTask(taskId, {
+            status: 'failed',
+            error: message,
+            errorCode: code,
+            canRetry: isLeaseHeld, // 租约持有可等待后重试
+          })
         }
       } catch (error) {
         if (this._isRunnable(taskId, generation)) {
-          this._updateTask(taskId, { status: 'failed', error: error.message || '上传失败' })
+          const msg = error.message || '上传失败'
+          // 确定性失败（格式/大小校验）重试无意义
+          const isDeterministic = DETERMINISTIC_FAILURE_MESSAGES.some(prefix => msg.startsWith(prefix))
+          this._updateTask(taskId, {
+            status: 'failed',
+            error: msg,
+            errorCode: '',
+            canRetry: !isDeterministic,
+          })
         }
       }
     },
@@ -263,7 +297,39 @@ Component({
       const taskId = e.currentTarget.dataset.id
       const task = this._getTask(taskId)
       if (!task || task.status !== 'failed') return
-      this._updateTask(taskId, { status: 'pending', progress: 0, error: '' })
+
+      const code = task.errorCode || ''
+
+      // 终端状态：生成新 requestId 创建全新 attempt
+      if (TERMINAL_ATTEMPT_CODES.includes(code)) {
+        const now = Date.now()
+        const newRequestId = `upload_${now}_${Math.random().toString(36).slice(2, 10)}`
+        this._updateTask(taskId, {
+          status: 'pending',
+          progress: 0,
+          error: '',
+          errorCode: '',
+          requestId: newRequestId,
+          canRetry: true,
+        })
+        this._pumpQueue()
+        return
+      }
+
+      // 租约持有：延迟重试
+      if (LEASE_HELD_CODES.includes(code)) {
+        wx.showToast({ title: '正在处理中，3秒后自动重试', icon: 'none', duration: 2000 })
+        this._updateTask(taskId, { status: 'pending', progress: 0, error: '', errorCode: '' })
+        setTimeout(() => {
+          if (this._getTask(taskId) && this._getTask(taskId).status === 'pending') {
+            this._pumpQueue()
+          }
+        }, 3000)
+        return
+      }
+
+      // 普通可重试错误（网络超时等）
+      this._updateTask(taskId, { status: 'pending', progress: 0, error: '', errorCode: '' })
       this._pumpQueue()
     },
 
@@ -271,7 +337,16 @@ Component({
       const photoIds = this.data.tasks
         .filter(task => task.status === 'success' && task.photoId)
         .map(task => task.photoId)
-      if (photoIds.length > 0) this.triggerEvent('addtags', { photoIds })
+      if (photoIds.length === 0) return
+      this.setData({ batchPhotoIds: photoIds, showTagPicker: true })
+    },
+
+    handleTagPickerClose() {
+      this.setData({ showTagPicker: false })
+    },
+
+    handleTagPickerConfirm() {
+      this.setData({ showTagPicker: false, batchPhotoIds: [] })
     },
 
     handleDone() {

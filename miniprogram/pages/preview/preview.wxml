@@ -12,9 +12,20 @@
 
   <!-- 内容 -->
   <scroll-view wx:if="{{pageState === 'ready'}}" class="content" scroll-y style="padding-top: {{navTotalHeight}}px; height: calc(100vh - {{navTotalHeight}}px);">
-    <!-- 大图 -->
-    <view class="image-area" bind:tap="handleViewImage">
+    <!-- 大图（支持滑动切换） -->
+    <view
+      class="image-area {{swiping ? 'swiping' : ''}}"
+      bind:tap="handleViewImage"
+      bindtouchstart="handleTouchStart"
+      bindtouchmove="handleTouchMove"
+      bindtouchend="handleTouchEnd"
+      style="transform: translateX({{swipeOffset}}px);"
+    >
       <image src="{{photo.preview_url}}" mode="widthFix" class="preview-image" />
+      <!-- 位置指示器 -->
+      <view class="swipe-indicator" wx:if="{{hasSwipeContext && photoIds.length > 1}}">
+        <text>{{currentIndex + 1}}/{{photoIds.length}}</text>
+      </view>
     </view>
 
     <!-- 标签区 -->

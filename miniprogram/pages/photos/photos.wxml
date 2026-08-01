@@ -149,6 +149,5 @@
     bind:selected="handleUploadSelected"
     bind:close="handleCloseUpload"
     bind:done="handleUploadDone"
-    bind:addtags="handleUploadAddTags"
   />
 </view>
