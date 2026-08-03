@@ -9,6 +9,7 @@
     "pages/tag-manager/tag-manager"
   ],
   "tabBar": {
+    "custom": true,
     "color": "#999999",
     "selectedColor": "#0052D9",
     "backgroundColor": "#FFFFFF",

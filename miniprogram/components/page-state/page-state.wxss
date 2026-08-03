@@ -6,3 +6,97 @@
   min-height: 60vh;
   padding: 48rpx;
 }
+
+/* ===== 瀑布流骨架 ===== */
+.waterfall-skeleton {
+  display: flex;
+  gap: 16rpx;
+  padding: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 60vh;
+}
+.sk-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.sk-card {
+  background: var(--color-surface-secondary); /* #F3F3F3 */
+  border-radius: var(--radius-card); /* 16rpx */
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+/* ===== 备注列表骨架 ===== */
+.note-list-skeleton {
+  width: 100%;
+  padding: 16rpx 0;
+}
+.sk-note-card {
+  display: flex;
+  gap: 24rpx;
+  padding: 24rpx 32rpx;
+  background: var(--color-surface-base);
+  margin: 0 32rpx 16rpx;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-border);
+}
+.sk-thumb {
+  width: 120rpx;
+  height: 120rpx;
+  background: var(--color-surface-secondary);
+  border-radius: 12rpx;
+  flex-shrink: 0;
+}
+.sk-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.sk-line {
+  height: 24rpx;
+  background: var(--color-surface-secondary);
+  border-radius: 4rpx;
+  margin-bottom: 12rpx;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+.sk-line.short {
+  width: 40% !important;
+  height: 20rpx;
+  margin-bottom: 0;
+}
+
+/* Skeleton shimmer animation */
+@keyframes skeleton-loading {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ===== 空态 ===== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16rpx;
+}
+.empty-illustration {
+  width: 480rpx;
+  height: 320rpx;
+  margin-bottom: 16rpx;
+}
+.empty-title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+.empty-desc {
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  text-align: center;
+  max-width: 500rpx;
+  line-height: 1.5;
+}

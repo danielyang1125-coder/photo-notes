@@ -24,4 +24,7 @@ Page({
       .catch(() => that.setData({ status: 'processing' }))
   },
   handleRefresh() { this.setData({ status: 'loading' }); this.checkStatus() },
+  handleContact() {
+    wx.showToast({ title: '客服功能开发中', icon: 'none' })
+  },
 })

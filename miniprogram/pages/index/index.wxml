@@ -1,6 +1,18 @@
 <!-- PG-001 启动与身份建立 -->
 <view class="page">
-  <t-loading wx:if="{{status === 'loading'}}" theme="circular" size="48rpx" text="正在连接…" />
+  <!-- 启动视觉层 -->
+  <view class="splash" wx:if="{{status === 'loading'}}">
+    <view class="splash-logo">
+      <t-icon name="image" size="160rpx" color="#0052D9" />
+    </view>
+    <text class="splash-title">图片笔记</text>
+    <view class="splash-spinner">
+      <t-loading theme="circular" size="64rpx" />
+    </view>
+    <text class="splash-version">v1.0.0</text>
+  </view>
+
+  <!-- 错误状态 -->
   <t-result wx:elif="{{status === 'error'}}" theme="warning" title="连接失败" description="{{errorMsg}}">
     <t-button slot="footer" theme="primary" size="medium" bind:tap="handleRetry">重试</t-button>
   </t-result>

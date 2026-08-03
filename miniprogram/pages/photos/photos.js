@@ -2,6 +2,7 @@ const app = getApp()
 const photosService = require('../../services/photos')
 const tagsService = require('../../services/tags')
 const authService = require('../../services/auth')
+const navbar = require('../../utils/navbar')
 
 Page({
   data: {
@@ -68,25 +69,12 @@ Page({
   },
 
   _initNavigation() {
-    let info = {}
-    let menu = null
-    try {
-      info = wx.getSystemInfoSync() || {}
-      menu = wx.getMenuButtonBoundingClientRect()
-    } catch (error) {
-      console.warn('[photos] 获取导航栏信息失败:', error)
-    }
-    const statusBarHeight = Number(info.statusBarHeight) || 20
-    const screenWidth = Number(info.screenWidth || info.windowWidth) || 375
-    const menuValid = menu && menu.top > 0 && menu.height > 0 && menu.left > 0
-    const navBarHeight = menuValid
-      ? Math.max(44, (menu.top - statusBarHeight) * 2 + menu.height)
-      : 44
-    const settingsRight = menuValid ? Math.max(12, screenWidth - menu.left + 8) : 12
+    const layout = navbar.getNavLayout()
+    const settingsRight = navbar.getMenuRightMargin()
     this.setData({
-      statusBarHeight,
-      navBarHeight,
-      navTotalHeight: statusBarHeight + navBarHeight,
+      statusBarHeight: layout.statusBarHeight,
+      navBarHeight: layout.navBarHeight,
+      navTotalHeight: layout.totalHeight,
       settingsRight,
     })
   },
@@ -282,6 +270,14 @@ Page({
   handleRetry() {
     this._beginQuery(true)
     this.loadPhotos('initial')
+  },
+
+  handleEmptyAction() {
+    if (this.data.filter.scope === 'ALL' || this.data.filter.scope === 'UNCATEGORIZED') {
+      this.handleOpenUpload()
+    } else {
+      this.handleViewAll()
+    }
   },
 
   handleScroll(e) {

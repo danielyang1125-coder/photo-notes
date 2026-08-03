@@ -33,13 +33,19 @@
     />
 
     <page-state
-      wx:if="{{pageState === 'initialLoading' || pageState === 'initialError'}}"
+      wx:if="{{pageState === 'initialLoading' || pageState === 'initialError' || pageState === 'empty'}}"
       state="{{pageState}}"
+      skeleton-type="waterfall"
+      empty-icon="image"
+      empty-title="{{filter.scope === 'ALL' ? '还没有图片' : filter.scope === 'UNCATEGORIZED' ? '所有图片都已添加标签' : '这个标签下还没有图片'}}"
+      empty-description="{{filter.scope === 'ALL' ? '上传第一张图片' : filter.scope === 'UNCATEGORIZED' ? '上传更多图片' : '查看全部图片'}}"
+      empty-action="{{filter.scope === 'ALL' ? '上传第一张图片' : filter.scope === 'UNCATEGORIZED' ? '添加图片' : '查看全部图片'}}"
       bind:retry="handleRetry"
+      bind:emptyAction="handleEmptyAction"
     />
 
     <scroll-view
-      wx:else
+      wx:if="{{pageState === 'ready'}}"
       class="waterfall-scroll"
       scroll-y
       enhanced
@@ -51,39 +57,9 @@
       bindscrolltolower="handleLoadMore"
       lower-threshold="300"
       scroll-top="{{scrollTop}}"
-      style="height: calc(100vh - {{navTotalHeight}}px - 92rpx);"
+      style="height: calc(100vh - {{navTotalHeight}}px - 166rpx);"
     >
-      <view wx:if="{{pageState === 'empty'}}" class="filter-empty">
-        <t-icon name="image" size="112rpx" color="#bbb" />
-        <text class="empty-title">
-          {{filter.scope === 'ALL' ? '还没有图片' : filter.scope === 'UNCATEGORIZED' ? '所有图片都已添加标签' : '这个标签下还没有图片'}}
-        </text>
-        <t-button
-          wx:if="{{filter.scope === 'ALL'}}"
-          theme="primary"
-          size="medium"
-          aria-label="上传第一张图片"
-          bind:tap="handleOpenUpload"
-        >上传第一张图片</t-button>
-        <t-button
-          wx:elif="{{filter.scope === 'UNCATEGORIZED'}}"
-          theme="primary"
-          variant="outline"
-          size="medium"
-          aria-label="添加图片"
-          bind:tap="handleOpenUpload"
-        >添加图片</t-button>
-        <t-button
-          wx:else
-          theme="primary"
-          variant="outline"
-          size="medium"
-          aria-label="查看全部图片"
-          bind:tap="handleViewAll"
-        >查看全部图片</t-button>
-      </view>
-
-      <view wx:else class="waterfall">
+      <view class="waterfall">
         <view class="column">
           <photo-card
             wx:for="{{leftList}}"

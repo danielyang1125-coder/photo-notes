@@ -1,15 +1,58 @@
 <!-- 统一状态组件：加载骨架 / 空态 / 错误 -->
 <view class="page-state">
-  <!-- 加载骨架 -->
-  <block wx:if="{{state === 'loading' || state === 'initialLoading'}}">
+
+  <!-- ===== 加载骨架 ===== -->
+
+  <!-- 瀑布流骨架（图片列表） -->
+  <view wx:if="{{(state === 'loading' || state === 'initialLoading') && skeletonType === 'waterfall'}}" class="waterfall-skeleton">
+    <view class="sk-column">
+      <view class="sk-card" style="height: {{340}}rpx;"></view>
+      <view class="sk-card" style="height: {{260}}rpx;"></view>
+      <view class="sk-card" style="height: {{400}}rpx;"></view>
+    </view>
+    <view class="sk-column">
+      <view class="sk-card" style="height: {{280}}rpx;"></view>
+      <view class="sk-card" style="height: {{380}}rpx;"></view>
+      <view class="sk-card" style="height: {{240}}rpx;"></view>
+    </view>
+  </view>
+
+  <!-- 备注列表骨架 -->
+  <view wx:elif="{{(state === 'loading' || state === 'initialLoading') && skeletonType === 'note-list'}}" class="note-list-skeleton">
+    <block wx:for="{{[1,2,3]}}" wx:key="*this">
+      <view class="sk-note-card">
+        <view class="sk-thumb"></view>
+        <view class="sk-body">
+          <view class="sk-line" style="width: 80%;"></view>
+          <view class="sk-line" style="width: 60%;"></view>
+          <view class="sk-line short" style="width: 30%;"></view>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <!-- 默认列表骨架 -->
+  <block wx:elif="{{state === 'loading' || state === 'initialLoading'}}">
     <t-skeleton row-col="{{[1,1,1,{width:'60%'}]}}" loading />
   </block>
 
-  <!-- 空态 -->
-  <t-empty wx:elif="{{state === 'empty'}}" icon="image" description="{{emptyText}}" />
+  <!-- ===== 空态 ===== -->
+  <view wx:elif="{{state === 'empty'}}" class="empty-state">
+    <image wx:if="{{emptyImage}}" src="{{emptyImage}}" mode="aspectFit" class="empty-illustration" />
+    <t-icon wx:else name="{{emptyIcon || 'image'}}" size="112rpx" color="#bbb" />
+    <text class="empty-title">{{emptyTitle || emptyText || '暂无数据'}}</text>
+    <text wx:if="{{emptyDescription}}" class="empty-desc">{{emptyDescription}}</text>
+    <t-button
+      wx:if="{{emptyAction}}"
+      theme="primary"
+      size="medium"
+      bind:tap="handleEmptyAction"
+    >{{emptyAction}}</t-button>
+  </view>
 
-  <!-- 错误 -->
+  <!-- ===== 错误态 ===== -->
   <t-result wx:elif="{{state === 'error' || state === 'initialError'}}" theme="warning" title="{{errorTitle}}" description="{{errorText}}">
     <t-button wx:if="{{showRetry}}" slot="footer" theme="primary" size="medium" bind:tap="handleRetry">重试</t-button>
   </t-result>
+
 </view>

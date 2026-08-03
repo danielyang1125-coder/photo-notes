@@ -2,19 +2,44 @@
 <view class="page">
   <t-navbar title="设置" left-arrow bind:go-back="handleBack" />
   <view class="content" style="padding-top: {{navTotalHeight}}px;">
-    <!-- 空间使用 -->
-    <t-cell-group title="存储空间">
-      <t-cell title="已用空间" description="{{usedMB}} MB / {{limitMB}} MB" />
-      <view class="progress-wrap"><t-progress percentage="{{usagePercent}}" label="{{usagePercent}}%" /></view>
-    </t-cell-group>
+    <!-- 存储空间卡片 -->
+    <view class="section-group">
+      <text class="section-group-title">存储空间</text>
+      <view class="storage-card">
+        <view class="storage-header">
+          <text class="storage-label">已用空间</text>
+          <text class="storage-value">{{usedMB}} MB / {{limitMB}} MB</text>
+        </view>
+        <t-progress
+          percentage="{{usagePercent}}"
+          stroke-width="8rpx"
+          color="{{usagePercent >= 85 ? '#ED7B2F' : '#0052D9'}}"
+          track-color="#F2F3F5"
+        />
+        <text class="storage-percent {{usagePercent >= 85 ? 'warning' : ''}}">{{usagePercent}}%</text>
+      </view>
+    </view>
+
     <!-- 标签管理入口 -->
-    <t-cell-group title="数据">
-      <t-cell title="标签管理" arrow hover bind:tap="handleTagManage" />
-    </t-cell-group>
+    <view class="section-group">
+      <text class="section-group-title">数据</text>
+      <view class="settings-item" hover-class="settings-item--hover" bind:tap="handleTagManage">
+        <text class="settings-item-title">标签管理</text>
+        <t-icon name="chevron-right" size="36rpx" color="#bbb" />
+      </view>
+    </view>
+
     <!-- 账号操作 -->
-    <t-cell-group title="账号">
-      <t-cell title="注销账号" arrow hover note="删除所有数据" bind:tap="handleDeleteAccount" />
-    </t-cell-group>
+    <view class="section-group">
+      <text class="section-group-title">账号</text>
+      <view class="settings-item" hover-class="settings-item--hover" bind:tap="handleDeleteAccount">
+        <text class="settings-item-title">注销账号</text>
+        <view class="settings-item-right">
+          <text class="settings-item-note danger">删除所有数据</text>
+          <t-icon name="chevron-right" size="36rpx" color="#bbb" />
+        </view>
+      </view>
+    </view>
   </view>
   <!-- 注销确认弹窗 -->
   <t-dialog id="delete-dialog" visible="{{showDeleteDialog}}" title="注销账号" content="注销后所有图片、备注和标签将被永久删除，不可恢复。确认继续？" confirm-btn="确认注销" cancel-btn="取消" bind:confirm="handleConfirmDeletion" bind:cancel="handleCancelDeletion" />

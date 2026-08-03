@@ -5,7 +5,9 @@
     "t-image": "tdesign-miniprogram/image/image",
     "t-tag": "tdesign-miniprogram/tag/tag",
     "t-skeleton": "tdesign-miniprogram/skeleton/skeleton",
-    "page-state": "../../components/page-state/page-state"
+    "t-button": "tdesign-miniprogram/button/button",
+    "t-icon": "tdesign-miniprogram/icon/icon",
+    "page-state": "/components/page-state/page-state"
   },
   "navigationStyle": "custom"
 }

@@ -6,7 +6,9 @@
     "t-dialog": "tdesign-miniprogram/dialog/dialog",
     "t-skeleton": "tdesign-miniprogram/skeleton/skeleton",
     "t-empty": "tdesign-miniprogram/empty/empty",
-    "t-button": "tdesign-miniprogram/button/button"
+    "t-button": "tdesign-miniprogram/button/button",
+    "t-icon": "tdesign-miniprogram/icon/icon",
+    "page-state": "/components/page-state/page-state"
   },
   "navigationStyle": "custom"
 }

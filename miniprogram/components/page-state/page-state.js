@@ -2,11 +2,35 @@ Component({
   properties: {
     state: {
       type: String,
-      value: 'loading', // loading | empty | error
+      value: 'loading', // loading | initialLoading | empty | error | initialError
+    },
+    skeletonType: {
+      type: String,
+      value: 'list', // list | waterfall | note-list
     },
     emptyText: {
       type: String,
       value: '暂无数据',
+    },
+    emptyTitle: {
+      type: String,
+      value: '',
+    },
+    emptyDescription: {
+      type: String,
+      value: '',
+    },
+    emptyImage: {
+      type: String,
+      value: '',
+    },
+    emptyIcon: {
+      type: String,
+      value: 'image',
+    },
+    emptyAction: {
+      type: String,
+      value: '',
     },
     errorTitle: {
       type: String,
@@ -24,6 +48,9 @@ Component({
   methods: {
     handleRetry() {
       this.triggerEvent('retry')
+    },
+    handleEmptyAction() {
+      this.triggerEvent('emptyAction')
     },
   },
 })

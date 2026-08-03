@@ -1,0 +1,16 @@
+<!-- 自定义底部 Tab Bar（白色胶囊浮层） -->
+<view class="tab-bar-wrap">
+  <view class="tab-bar-pill">
+    <view
+      wx:for="{{list}}"
+      wx:key="index"
+      class="tab-item {{selected === index ? 'active' : ''}}"
+      data-path="{{item.pagePath}}"
+      data-index="{{index}}"
+      bind:tap="switchTab"
+    >
+      <text class="tab-icon">{{item.icon}}</text>
+      <text class="tab-label">{{item.text}}</text>
+    </view>
+  </view>
+</view>

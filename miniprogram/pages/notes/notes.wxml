@@ -1,14 +1,56 @@
 <!-- PG-006 备注列表 -->
 <view class="page">
-  <t-navbar title="备注" />
+  <t-navbar title="备注">
+    <t-button
+      slot="right"
+      theme="default"
+      variant="text"
+      size="small"
+      class="sort-btn"
+      bind:tap="handleToggleSort"
+    >
+      <view class="sort-btn-inner">
+        <t-icon name="swap" size="24rpx" />
+        <text>{{sortOrder === 'desc' ? '最新' : '最早'}}</text>
+      </view>
+    </t-button>
+  </t-navbar>
   <view class="content" style="padding-top: {{navTotalHeight}}px;">
-    <page-state wx:if="{{pageState !== 'ready'}}" state="{{pageState}}" emptyText="还没有备注" bind:retry="handleRetry" />
+    <page-state
+      wx:if="{{pageState !== 'ready'}}"
+      state="{{pageState}}"
+      skeleton-type="note-list"
+      empty-icon="edit-1"
+      empty-title="还没有备注"
+      empty-description="为图片添加第一条备注"
+      empty-action="去上传图片并添加备注"
+      bind:retry="handleRetry"
+      bind:emptyAction="handleEmptyAction"
+    />
     <view wx:else class="list">
-      <t-cell wx:for="{{list}}" wx:key="_id" description="{{item.created_at}}" hover bind:tap="handleNoteTap" data-photo-id="{{item.photo_id}}">
-        <view slot="title" class="note-title-clamp">{{item.content}}</view>
-        <t-image slot="left-icon" src="{{item.thumbnail_url}}" mode="aspectFill" width="72" height="72" shape="round" />
-        <t-tag slot="note" wx:if="{{item.updated_at > item.created_at}}" theme="warning" size="small">已编辑</t-tag>
-      </t-cell>
+      <view
+        wx:for="{{list}}"
+        wx:key="_id"
+        class="note-card"
+        hover-class="note-card--hover"
+        bind:tap="handleNoteTap"
+        data-photo-id="{{item.photo_id}}"
+      >
+        <image
+          wx:if="{{item.thumbnail_url}}"
+          src="{{item.thumbnail_url}}"
+          mode="aspectFill"
+          class="note-card-thumb"
+        />
+        <view wx:else class="note-card-thumb placeholder"></view>
+        <view class="note-card-body">
+          <text class="note-card-content">{{item.content}}</text>
+          <view class="note-card-footer">
+            <text class="note-card-time">{{item.created_at}}</text>
+            <text wx:if="{{item.updated_at > item.created_at}}" class="note-card-edited">已编辑</text>
+          </view>
+        </view>
+      </view>
     </view>
     <view wx:if="{{loadingMore}}" class="loadmore-hint">加载中…</view>
   </view>

@@ -1,37 +1,57 @@
 /* ============================================================
    图片笔记小程序 — CSS 自定义属性（Design Tokens）
    基于 DESIGN-SYSTEM-图片笔记小程序-V1.0.0.md
+   对齐 FRONTEND-RESTORATION-GUIDE V1.0.0
    ============================================================ */
 
 page {
   /* ---- 品牌色 ---- */
   --color-primary: #0052D9;
-  --color-primary-light: #E0EBFF;
+  --color-primary-light: #E7F0FF;          /* 更新：从 #E0EBFF 改为 #E7F0FF */
   --color-primary-dark: #003CAB;
 
   /* ---- 功能色 ---- */
   --color-success: #00A870;
   --color-warning: #ED7B2F;
-  --color-error: #E34D59;
+  --color-error: #D54941;                  /* 更新：从 #E34D59 改为 #D54941 */
   --color-info: #0052D9;
 
-  /* ---- 中性色 ---- */
+  /* ---- Surface · 表面/背景 ---- */
+  --color-surface-base: #FFFFFF;           /* 新增 */
+  --color-surface-secondary: #F3F3F3;      /* 新增 */
+  --color-surface-tertiary: #F2F3F5;       /* 新增 */
+  /* 保留兼容别名 */
   --color-bg: #F3F3F3;
   --color-bg-white: #FFFFFF;
-  --color-text-primary: #1D1D1D;
-  --color-text-secondary: #717171;
-  --color-text-placeholder: #BBBBBB;
-  --color-border: #E7E7E7;
+
+  /* ---- Neutral · 中性文本/描边 ---- */
+  --color-text-primary: #181818;           /* 更新：从 #1D1D1D 改为 #181818 */
+  --color-text-secondary: #5E5E5E;         /* 更新：从 #717171 改为 #5E5E5E */
+  --color-text-placeholder: #A6A6A6;       /* 更新：从 #BBBBBB 改为 #A6A6A6 */
+  --color-border: #E8E8E8;                /* 更新：从 #E7E7E7 改为 #E8E8E8 */
+  --color-overlay-ink: #101114;            /* 新增 */
 
   /* ---- 标签专用 Token ---- */
   --color-tag-bg: #F3F3F3;
-  --color-tag-selected-bg: #E0EBFF;
+  --color-tag-selected-bg: #E7F0FF;       /* 更新：从 #E0EBFF 改为 #E7F0FF */
   --color-disabled-bg: #EEEEEE;
 
-  /* ---- 尺寸 ---- */
-  --radius-sm: 6rpx;
+  /* ---- 圆角 ---- */
+  --radius-xs: 4rpx;                       /* 新增 */
+  --radius-sm: 8rpx;                       /* 新增 */
+  --radius-card: 16rpx;                    /* 新增：卡片圆角 r-sm(8pt→16rpx) */
   --radius-md: 12rpx;
+  --radius-tag: 14rpx;                     /* 新增 */
   --radius-lg: 16rpx;
+  --radius-pill: 26rpx;                    /* 新增 */
+  --radius-circle: 50%;                    /* 新增 */
+
+  /* ---- 间距 ---- */
+  --space-xs: 4rpx;                        /* 新增 */
+  --space-sm: 8rpx;                        /* 新增 */
+  --space-md: 12rpx;                       /* 新增 */
+  --space-lg: 16rpx;                       /* 新增 */
+  --space-xl: 24rpx;                       /* 新增 */
 
   /* ---- 字体 ---- */
   --font-size-xs: 22rpx;
@@ -39,4 +59,9 @@ page {
   --font-size-md: 28rpx;
   --font-size-lg: 32rpx;
   --font-size-xl: 36rpx;
+
+  /* ---- 阴影 ---- */
+  --shadow-tab: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);       /* 新增 */
+  --shadow-modal: 0 -4rpx 12rpx rgba(0, 0, 0, 0.15);    /* 新增 */
+  --shadow-light: 0 2rpx 8rpx rgba(0, 0, 0, 0.10);      /* 新增 */
 }

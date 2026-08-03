@@ -1,9 +1,9 @@
 .photo-card {
   break-inside: avoid;
   margin-bottom: 16rpx;
-  border-radius: 12rpx;
+  border-radius: var(--radius-card, 16rpx);
   overflow: hidden;
-  background: #fff;
+  background: var(--color-surface-base, #fff);
   position: relative;
 }
 .image-wrap {

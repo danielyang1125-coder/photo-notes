@@ -2,17 +2,40 @@
 <view class="page">
   <t-navbar title="标签管理" left-arrow bind:go-back="handleBack" />
   <view class="content" style="padding-top: {{navTotalHeight}}px;">
-    <t-button theme="primary" block disabled="{{mutating || list.length >= 100}}" bind:tap="handleCreate">
-      ＋ 新建标签
-    </t-button>
-    <t-empty wx:if="{{list.length === 0 && !loading}}" description="暂无标签" />
+    <view class="create-wrap">
+      <t-button theme="primary" block disabled="{{mutating || list.length >= 100}}" bind:tap="handleCreate">
+        ＋ 新建标签
+      </t-button>
+    </view>
+    <page-state
+      wx:if="{{list.length === 0 && !loading}}"
+      state="empty"
+      empty-icon="edit-1"
+      empty-title="暂无标签"
+      empty-description="新建标签来整理你的图片"
+      empty-action="新建标签"
+      bind:emptyAction="handleCreate"
+    />
     <view wx:else class="tag-list">
-      <t-cell wx:for="{{list}}" wx:key="_id" title="{{item.name}}" description="{{item.photo_count}} 张图片" hover>
-        <view slot="right-icon" class="actions">
-          <text class="action" data-id="{{item._id}}" data-action="rename" bind:tap="handleAction">重命名</text>
-          <text class="action danger" data-id="{{item._id}}" data-action="delete" bind:tap="handleAction">删除</text>
+      <view
+        wx:for="{{list}}"
+        wx:key="_id"
+        class="tag-item"
+        hover-class="tag-item--hover"
+      >
+        <view class="tag-info">
+          <text class="tag-name">{{item.name}}</text>
+          <text class="tag-count">{{item.photo_count}} 张图片</text>
         </view>
-      </t-cell>
+        <view class="tag-actions">
+          <view class="tag-action-btn" data-id="{{item._id}}" data-action="rename" bind:tap="handleAction">
+            <t-icon name="edit" size="32rpx" color="#5E5E5E" />
+          </view>
+          <view class="tag-action-btn" data-id="{{item._id}}" data-action="delete" bind:tap="handleAction">
+            <t-icon name="delete" size="32rpx" color="#D54941" />
+          </view>
+        </view>
+      </view>
     </view>
   </view>
 </view>

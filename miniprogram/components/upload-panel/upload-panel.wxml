@@ -1,41 +1,49 @@
 <!-- PG-003 上传面板 -->
 <t-popup visible="{{visible}}" placement="bottom" bind:visible-change="handleVisibleChange">
   <view class="panel">
+    <!-- Header -->
     <view class="panel-header">
-      <text class="title">上传图片</text>
-      <text class="count">{{uploadedCount}}/{{totalCount}} 张</text>
+      <text class="title">已选 {{uploadedCount}}/{{totalCount}}</text>
+      <text wx:if="{{!allDone}}" class="continue-btn" bind:tap="handleChooseImage">继续选择</text>
     </view>
 
-    <!-- 上传列表 -->
-    <scroll-view class="task-list" scroll-y>
-      <view wx:for="{{tasks}}" wx:key="id" class="task-item">
-        <image wx:if="{{item.thumb}}" src="{{item.thumb}}" mode="aspectFill" class="task-thumb" />
-        <view wx:else class="task-thumb placeholder" />
-        <view class="task-info">
-          <text class="task-name">{{item.fileName}}</text>
-          <text class="task-status">
-            <text wx:if="{{item.status === 'pending'}}">等待上传</text>
-            <text wx:elif="{{item.status === 'compressing'}}">压缩中…</text>
-            <text wx:elif="{{item.status === 'uploading'}}">上传中 {{item.progress}}%</text>
-            <text wx:elif="{{item.status === 'confirming'}}">处理中…</text>
-            <text wx:elif="{{item.status === 'success'}}" class="status-success">✓</text>
-            <text wx:elif="{{item.status === 'failed'}}" class="status-failed">{{item.error}}</text>
-            <text wx:elif="{{item.status === 'cancelled'}}" class="status-cancel">已取消</text>
-          </text>
+    <!-- 4列网格上传项 -->
+    <scroll-view class="task-grid" scroll-y>
+      <view class="grid">
+        <view wx:for="{{tasks}}" wx:key="id" class="grid-item">
+          <image wx:if="{{item.thumb}}" src="{{item.thumb}}" mode="aspectFill" class="grid-thumb" />
+          <view wx:else class="grid-thumb placeholder" />
+          <!-- 状态标记 -->
+          <view wx:if="{{item.status === 'success'}}" class="grid-status success">
+            <t-icon name="check" size="24rpx" color="#fff" />
+          </view>
+          <view wx:elif="{{item.status === 'failed'}}" class="grid-status failed">
+            <t-icon name="close" size="24rpx" color="#fff" />
+          </view>
+          <view wx:elif="{{item.status === 'uploading' || item.status === 'compressing' || item.status === 'confirming'}}" class="grid-status uploading">
+            <text class="grid-progress">{{item.progress || ''}}</text>
+          </view>
+          <!-- 重试按钮（失败的） -->
+          <view
+            wx:if="{{item.status === 'failed' && item.canRetry !== false}}"
+            class="grid-retry"
+            data-id="{{item.id}}"
+            bind:tap="handleRetryTask"
+          >
+            <text>重试</text>
+          </view>
         </view>
-        <t-button
-          wx:if="{{item.status === 'failed' && item.canRetry !== false}}"
-          size="small"
-          variant="text"
-          theme="primary"
-          data-id="{{item.id}}"
-          bind:tap="handleRetryTask"
-        >重试</t-button>
-        <t-progress wx:if="{{item.status === 'uploading'}}" percentage="{{item.progress}}" size="small" />
       </view>
     </scroll-view>
 
-    <view wx:if="{{allDone}}" class="batch-summary">
+    <!-- 警告横幅 -->
+    <view wx:if="{{failedCount > 0}}" class="warning-banner">
+      <t-icon name="error-circle" size="28rpx" color="#ED7B2F" />
+      <text class="warning-text">{{failedCount}} 张图片上传失败</text>
+    </view>
+
+    <!-- 批量标签按钮 - 始终可见 -->
+    <view wx:if="{{allDone && successCount > 0}}" class="batch-summary">
       上传完成：成功 {{successCount}} 张，失败 {{failedCount}} 张
     </view>
 
@@ -47,9 +55,14 @@
       <t-button wx:if="{{allDone && successCount > 0}}" theme="primary" size="large" block bind:tap="handleDone">
         完成
       </t-button>
-      <t-button wx:if="{{allDone && successCount > 0}}" theme="default" size="large" block bind:tap="handleAddTags">
-        为本批图片添加标签
-      </t-button>
+      <t-button
+        wx:if="{{successCount > 0}}"
+        theme="default"
+        size="large"
+        block
+        disabled="{{allDone ? false : true}}"
+        bind:tap="handleAddTags"
+      >为本批图片添加标签</t-button>
       <t-button wx:if="{{allDone && successCount === 0}}" theme="default" size="large" block bind:tap="handleCloseCompleted">
         关闭
       </t-button>

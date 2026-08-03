@@ -1,4 +1,4 @@
-.page { min-height:100vh; background:#000; display:flex; flex-direction:column; }
+.page { min-height:100vh; background: var(--color-overlay-ink, #101114); display:flex; flex-direction:column; }
 .content { flex:1; }
 .image-area { width:100%; cursor:pointer; position:relative; transition: transform 0.15s ease-out; }
 .image-area.swiping { transition: none; }
@@ -17,15 +17,19 @@
   font-size: 22rpx;
   line-height: 1.6;
 }
-.section { background:#fff; padding:24rpx; margin-top:16rpx; }
+.section {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 24rpx;
+  margin-top: 16rpx;
+}
 .section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16rpx; }
-.section-title { font-size:30rpx; font-weight:600; }
-.empty-notes { color:#ccc; font-size:26rpx; text-align:center; padding:32rpx 0; }
-.note-item { padding:16rpx 0; border-bottom:1rpx solid #f0f0f0; }
-.note-content { font-size:28rpx; color:#333; line-height:1.6; word-break:break-all; }
+.section-title { font-size:30rpx; font-weight:600; color: var(--color-text-primary); }
+.empty-notes { color: var(--color-text-placeholder); font-size:26rpx; text-align:center; padding:32rpx 0; }
+.note-item { padding:16rpx 0; border-bottom:1rpx solid var(--color-border); }
+.note-content { font-size:28rpx; color: var(--color-text-primary); line-height:1.6; word-break:break-all; }
 .note-meta { display:flex; gap:16rpx; margin-top:8rpx; }
-.note-time { font-size:24rpx; color:#999; }
-.note-edited { font-size:22rpx; color:#ED7B2F; }
+.note-time { font-size:24rpx; color: var(--color-text-placeholder); }
+.note-edited { font-size:22rpx; color: var(--color-warning); }
 .info-row { display:flex; justify-content:space-between; padding:12rpx 0; }
-.info-label { font-size:26rpx; color:#999; }
-.info-value { font-size:26rpx; color:#333; }
+.info-label { font-size:26rpx; color: var(--color-text-secondary); }
+.info-value { font-size:26rpx; color: var(--color-text-primary); }

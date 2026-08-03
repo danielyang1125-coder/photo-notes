@@ -1,5 +1,6 @@
 const app = getApp()
 const authService = require('../../services/auth')
+const navbar = require('../../utils/navbar')
 
 Page({
   data: {
@@ -14,17 +15,8 @@ Page({
   onShow() { this.loadStatus() },
 
   _calcNavHeight() {
-    try {
-      const info = wx.getSystemInfoSync() || {}
-      const menu = wx.getMenuButtonBoundingClientRect()
-      const statusBarHeight = Number(info.statusBarHeight) || 20
-      const navBarHeight = (menu && menu.top > 0 && menu.height > 0)
-        ? Math.max(44, (menu.top - statusBarHeight) * 2 + menu.height)
-        : 44
-      this.setData({ navTotalHeight: statusBarHeight + navBarHeight })
-    } catch (e) {
-      this.setData({ navTotalHeight: 96 })
-    }
+    const layout = navbar.getNavLayout()
+    this.setData({ navTotalHeight: layout.totalHeight })
   },
 
   _applyUsage(used, limit) {

@@ -7,11 +7,11 @@
 
 /* 页面基础 */
 page {
-  background: #F3F3F3;
+  background: var(--color-surface-secondary, #F3F3F3);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  font-size: 28rpx;
-  color: #1D1D1D;
+  font-size: var(--font-size-md, 28rpx);
+  color: var(--color-text-primary, #181818);
   line-height: 1.5;
   box-sizing: border-box;
 }

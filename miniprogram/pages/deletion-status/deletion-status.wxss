@@ -1,1 +1,45 @@
-.page { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; background:#f3f3f3; }
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--color-surface-base, #FFFFFF);
+  padding: 48rpx;
+}
+
+/* ---- 状态包裹 ---- */
+.status-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+}
+.status-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16rpx;
+}
+.status-title {
+  font-size: var(--font-size-lg, 32rpx);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.status-desc {
+  font-size: var(--font-size-md, 28rpx);
+  color: var(--color-text-secondary);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ---- 联系客服 ---- */
+.contact-link {
+  font-size: var(--font-size-sm, 24rpx);
+  color: var(--color-primary);
+  margin-top: 24rpx;
+}
+.contact-footer {
+  margin-top: 24rpx;
+  text-align: center;
+}
