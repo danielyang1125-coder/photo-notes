@@ -31,14 +31,15 @@
 /* ===== 备注列表骨架 ===== */
 .note-list-skeleton {
   width: 100%;
-  padding: 16rpx 0;
+  padding: 16rpx 32rpx;
+  box-sizing: border-box;
 }
 .sk-note-card {
   display: flex;
   gap: 24rpx;
-  padding: 24rpx 32rpx;
+  padding: 24rpx;
   background: var(--color-surface-base);
-  margin: 0 32rpx 16rpx;
+  margin-bottom: 16rpx;
   border-radius: var(--radius-card);
   border: 1px solid var(--color-border);
 }

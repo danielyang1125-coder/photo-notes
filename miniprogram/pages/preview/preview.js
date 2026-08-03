@@ -17,6 +17,7 @@ Page({
     editingNote: null,
     showTagPicker: false,
     navTotalHeight: 0,
+    swipeLoading: false,  // 滑动切换时的 loading 蒙层
     // 滑动切换
     photoIds: [],
     currentIndex: 0,
@@ -193,14 +194,16 @@ Page({
     // 记录当前页的变更信息
     this._signalChanges()
 
+    // 保留当前内容 + 显示 loading 蒙层，避免页面闪黑屏
     this.setData({
       photoId: nextPhotoId,
       currentIndex: index,
-      pageState: 'loading',
+      swipeLoading: true,
     }, () => {
       this._initialNoteCount = null
       this._initialTagIds = null
       this.loadDetail().finally(() => {
+        this.setData({ swipeLoading: false })
         this._navigating = false
       })
     })

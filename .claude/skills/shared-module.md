@@ -64,10 +64,44 @@ npm run backend:test
 ## 修改已有共享模块
 
 1. 编辑 `cloudfunctions/_shared/<module>.js`
-2. 运行 `npm run backend:sync` 同步副本
+2. 运行 `npm run backend:sync` 同步到所有云函数的 `lib/shared/`
 3. 运行 `npm run backend:check` 验证无 drift
 4. 运行 `npm run backend:test` 确保测试通过
-5. 如修改函数签名，更新所有使用该模块的云函数
+5. 如修改函数签名，更新所有使用该模块的云函数业务代码
+6. **部署受影响的云函数** — 必须重新部署才能使修改生效
+
+> ⚠️ **关键**：只改 `_shared/` 源文件**不会**直接生效。云函数运行时引用的是自身目录下的 `lib/shared/` 副本，必须经过 同步 → 部署 两步才能在线上生效。漏掉任一步都会导致线上代码仍是旧版本。
+
+## 为什么每个云函数有自己的副本？
+
+CloudBase 的部署模型决定了每个云函数是**独立部署单元**——部署时只上传自身目录内的文件，无法引用 `../_shared/` 这类外部路径。因此：
+
+```text
+cloudfunctions/_shared/          ← 唯一真相源（开发时在此编辑）
+    ├── cursor.js
+    ├── router.js
+    └── ...
+
+cloudfunctions/photo/
+    └── lib/shared/              ← photo 云函数的本地副本（运行时引用）
+        ├── cursor.js            ← 由 npm run backend:sync 自动同步
+        ├── router.js
+        └── ...
+
+cloudfunctions/note/
+    └── lib/shared/              ← note 云函数的本地副本
+        └── ...
+```
+
+`npm run backend:sync` 将 `_shared/` 下的所有 `.js` 文件复制到每个云函数的 `lib/shared/` 目录，保证所有副本与源一致。
+
+## 完整修改 → 生效链路
+
+```text
+编辑 _shared/xxx.js → npm run backend:sync → npm run backend:test → 部署云函数 → 线上生效
+```
+
+部署方式参考 [[backend-deploy]]。
 
 ## 重要约束
 

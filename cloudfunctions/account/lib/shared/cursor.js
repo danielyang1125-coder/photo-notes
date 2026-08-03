@@ -52,6 +52,15 @@ function decodeCursor(value, expected, secret) {
     for (const [key, expectedValue] of Object.entries(expected || {})) {
       if (decoded[key] !== expectedValue) throw new AppError('INVALID_CURSOR')
     }
+    // 将 JSON 序列化丢失类型的 Date 字段还原为 Date 对象
+    // （JSON.stringify 把 Date → ISO string，JSON.parse 不会自动还原，
+    //   导致 CloudBase 查询中 Date 字段与字符串比较时类型不匹配）
+    if (decoded.lastValue && typeof decoded.lastValue === 'string') {
+      const d = new Date(decoded.lastValue)
+      if (!isNaN(d.getTime())) {
+        decoded.lastValue = d
+      }
+    }
     return decoded
   } catch (error) {
     if (error instanceof AppError) throw error

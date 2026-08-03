@@ -26,6 +26,10 @@ Page({
   },
 
   onShow() {
+    // 同步自定义 tabBar 选中态
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 1 })
+    }
     if (app.globalData.refreshNotes) {
       app.globalData.refreshNotes = false
       this.loadNotes(true)
