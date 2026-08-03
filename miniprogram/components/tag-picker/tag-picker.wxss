@@ -92,18 +92,18 @@
   display: flex; align-items: center;
   padding: 16rpx 24rpx;
   border-radius: var(--radius-tag, 28rpx);
-  background: var(--color-surface-base);
-  border: 1px solid var(--color-border);
-  font-size: var(--font-size-md, 28rpx); color: var(--color-text-primary);
+  background: var(--color-surface-base, #FFFFFF);
+  border: 1px solid var(--color-border, #E8E8E8);
+  font-size: var(--font-size-md, 28rpx); color: var(--color-text-primary, #181818);
   position: relative;
   transition: all 0.2s ease;
 }
 .tag-item.selected {
-  background: var(--color-tag-selected-bg);
-  color: var(--color-primary);
-  border-color: transparent;
+  background: var(--color-primary-light, #E7F0FF);
+  color: var(--color-primary, #0052D9);
+  border-color: var(--color-primary, #0052D9);
 }
 .tag-name { max-width: 160rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-count { margin-left: 8rpx; font-size: var(--font-size-xs, 22rpx); color: var(--color-text-placeholder); }
-.tag-item.selected .tag-count { color: var(--color-primary); }
+.tag-item.selected .tag-count { color: var(--color-primary, #0052D9); }
 .check-mark { margin-left: 8rpx; font-size: 24rpx; font-weight: 700; }

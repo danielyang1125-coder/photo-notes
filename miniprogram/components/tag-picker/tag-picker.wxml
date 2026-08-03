@@ -48,13 +48,12 @@
         <view
           wx:for="{{filteredTags}}"
           wx:key="_id"
-          class="tag-item {{selectedIds.indexOf(item._id) >= 0 ? 'selected' : ''}}"
+          class="tag-item {{item._selected ? 'selected' : ''}}"
           bind:tap="handleToggle"
           data-id="{{item._id}}"
         >
           <text class="tag-name">{{item.name}}</text>
           <text class="tag-count">{{item.photo_count}}</text>
-          <view class="check-mark" wx:if="{{selectedIds.indexOf(item._id) >= 0}}">✓</view>
         </view>
       </view>
     </view>

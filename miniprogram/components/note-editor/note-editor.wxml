@@ -5,14 +5,17 @@
       <text class="title">{{note ? '编辑备注' : '添加备注'}}</text>
       <text class="confirm-btn {{saving ? 'disabled' : ''}}" bind:tap="handleConfirm">{{saving ? '保存中…' : '保存'}}</text>
     </view>
-    <view class="editor-body">
+    <view class="editor-body" style="padding-bottom: {{keyboardHeight}}px;">
       <textarea
         class="textarea"
         value="{{content}}"
         placeholder="输入备注内容…"
         maxlength="1000"
         auto-focus="{{true}}"
+        cursor-spacing="20"
+        adjust-position="{{true}}"
         bindinput="handleInput"
+        bindkeyboardheightchange="handleKeyboardHeightChange"
       />
       <view class="char-count">还可输入 {{1000 - content.length}} 字</view>
       <view class="error" wx:if="{{error}}">{{error}}</view>

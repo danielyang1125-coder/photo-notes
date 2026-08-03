@@ -30,7 +30,10 @@
 .cancel-btn { font-size: var(--font-size-md, 28rpx); color: var(--color-text-secondary); }
 .confirm-btn { font-size: var(--font-size-md, 28rpx); color: var(--color-primary); font-weight: 600; }
 .confirm-btn.disabled { color: var(--color-text-placeholder); }
-.editor-body { padding: 32rpx; }
+.editor-body {
+  padding: 32rpx;
+  transition: padding-bottom 0.25s ease;
+}
 .textarea {
   width: 100%; min-height: 200rpx; font-size: var(--font-size-md, 28rpx);
   line-height: 1.6; color: var(--color-text-primary);

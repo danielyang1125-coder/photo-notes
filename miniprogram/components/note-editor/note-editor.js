@@ -15,6 +15,7 @@ Component({
     content: '',
     saving: false,
     error: '',
+    keyboardHeight: 0,
   },
 
   observers: {
@@ -24,6 +25,7 @@ Component({
           content: note ? (note.content || '') : '',
           error: '',
           saving: false,
+          keyboardHeight: 0,
         })
       }
     },
@@ -34,6 +36,12 @@ Component({
 
     handleInput(e) {
       this.setData({ content: e.detail.value || '', error: '' })
+    },
+
+    handleKeyboardHeightChange(e) {
+      const height = e.detail.height || 0
+      // 加上一点安全间距，避免输入框紧贴键盘顶部
+      this.setData({ keyboardHeight: height > 0 ? height + 16 : 0 })
     },
 
     handleCancel() {

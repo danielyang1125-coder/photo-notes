@@ -31,6 +31,17 @@ Component({
   methods: {
     noop() {},
 
+    // 给 filteredTags 中的每个 tag 打上 _selected 标记
+    _markSelectedTags() {
+      const { filteredTags, selectedIds } = this.data
+      const idSet = new Set(selectedIds)
+      const marked = filteredTags.map(tag => ({
+        ...tag,
+        _selected: idSet.has(tag._id),
+      }))
+      this.setData({ filteredTags: marked })
+    },
+
     async _loadData() {
       const photoIds = this.properties.photoIds || []
       const isBatch = photoIds.length > 0
@@ -50,7 +61,9 @@ Component({
           ? (photoRes.result.data.tags || [])
           : []
         const selectedIds = photoTags.map(t => t._id)
-        this.setData({ allTags, filteredTags: allTags, selectedIds, loading: false })
+        this.setData({ allTags, filteredTags: allTags, selectedIds, loading: false }, () => {
+          this._markSelectedTags()
+        })
       } catch (e) {
         console.error('[tag-picker]', e)
         wx.showToast({ title: '加载标签失败', icon: 'none' })
@@ -74,7 +87,9 @@ Component({
     _applyFilter(searchText) {
       const text = searchText.trim()
       if (!text) {
-        this.setData({ filteredTags: this.data.allTags, canCreate: false })
+        this.setData({ filteredTags: this.data.allTags, canCreate: false }, () => {
+          this._markSelectedTags()
+        })
         return
       }
       const lower = text.toLowerCase()
@@ -82,7 +97,9 @@ Component({
         tag.name.toLowerCase().includes(lower)
       )
       const canCreate = this._computeCanCreate(text)
-      this.setData({ filteredTags: filtered, canCreate })
+      this.setData({ filteredTags: filtered, canCreate }, () => {
+        this._markSelectedTags()
+      })
     },
 
     _computeCanCreate(text) {
@@ -129,7 +146,9 @@ Component({
           const app = getApp()
           app.globalData.refreshTags = true
 
-          this.setData({ allTags, filteredTags, selectedIds, creating: false })
+          this.setData({ allTags, filteredTags, selectedIds, creating: false }, () => {
+            this._markSelectedTags()
+          })
           wx.showToast({ title: '已创建并选中', icon: 'success', duration: 1500 })
         } else {
           const msg = (res.result && res.result.message) || '创建失败'
@@ -158,7 +177,9 @@ Component({
         }
         selectedIds.push(tagId)
       }
-      this.setData({ selectedIds })
+      this.setData({ selectedIds }, () => {
+        this._markSelectedTags()
+      })
     },
 
     // ---------- 关闭 / 保存 ----------

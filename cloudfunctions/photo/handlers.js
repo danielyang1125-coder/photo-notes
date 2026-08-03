@@ -31,7 +31,7 @@ function createPhotoHandlers(deps) {
     }
   }
 
-  function projectCard(photo) {
+  function projectCard(photo, latestNote) {
     return {
       _id: photo._id,
       thumbnail_url: photo.thumbnail_url || '',
@@ -41,6 +41,8 @@ function createPhotoHandlers(deps) {
       time_source: photo.time_source,
       upload_time: photo.upload_time,
       tag_count: photo.tag_count || 0,
+      note_count: photo.note_count || 0,
+      latest_note_content: latestNote ? latestNote.content : '',
     }
   }
 
@@ -105,6 +107,47 @@ function createPhotoHandlers(deps) {
     }
   }
 
+  async function fetchLatestNotes(openid, photos) {
+    if (!photos || photos.length === 0) return { noteMap: {}, countMap: {} }
+    const photoIds = photos.map((p) => p._id).filter(Boolean)
+    if (photoIds.length === 0) return { noteMap: {}, countMap: {} }
+
+    // Fetch all notes for these photos in one query, ordered by created_at desc
+    const noteMap = {}
+    const countMap = {}
+    try {
+      // Query in batches if there are many photos (CloudBase in-query limit)
+      const allNotes = []
+      let offset = 0
+      const photoIdBatches = []
+      // Split into batches of 100 photoIds per query
+      for (let i = 0; i < photoIds.length; i += 100) {
+        photoIdBatches.push(photoIds.slice(i, i + 100))
+      }
+      for (const batch of photoIdBatches) {
+        const result = await db.collection('notes')
+          .where({
+            photo_id: _.in(batch),
+            _openid: openid,
+          })
+          .orderBy('created_at', 'desc')
+          .get()
+        if (result.data) allNotes.push(...result.data)
+      }
+
+      // Group by photo_id: track count and keep the latest note (first in desc order)
+      allNotes.forEach((note) => {
+        const pid = note.photo_id
+        countMap[pid] = (countMap[pid] || 0) + 1
+        if (!noteMap[pid]) noteMap[pid] = note
+      })
+    } catch (_err) {
+      // Non-critical — leave maps empty
+    }
+
+    return { noteMap, countMap }
+  }
+
   // ============================================================
   // list
   // ============================================================
@@ -146,7 +189,13 @@ function createPhotoHandlers(deps) {
 
     await generateThumbnailUrls(photos)
 
-    const list = photos.map(projectCard)
+    const { noteMap, countMap } = await fetchLatestNotes(openid, photos)
+
+    const list = photos.map(p => {
+      const noteCount = countMap[p._id] || 0
+      p.note_count = noteCount
+      return projectCard(p, noteMap ? noteMap[p._id] : null)
+    })
     let nextCursor = null
     if (hasMore && photos.length > 0) {
       const last = photos[photos.length - 1]
@@ -273,7 +322,13 @@ function createPhotoHandlers(deps) {
 
     await generateThumbnailUrls(validatedPhotos)
 
-    const list = validatedPhotos.map(projectCard)
+    const { noteMap, countMap } = await fetchLatestNotes(openid, validatedPhotos)
+
+    const list = validatedPhotos.map(p => {
+      const noteCount = countMap[p._id] || 0
+      p.note_count = noteCount
+      return projectCard(p, noteMap ? noteMap[p._id] : null)
+    })
     const hasMore = !relationsExhausted
     let nextCursor = null
     if (hasMore && lastScannedRelation) {

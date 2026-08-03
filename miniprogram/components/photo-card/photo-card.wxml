@@ -12,9 +12,17 @@
     <view wx:else class="image-placeholder">
       <text>图片加载失败</text>
     </view>
-    <view class="note-mark" wx:if="{{photo.note_count > 0}}">
-      <t-icon name="edit-1" size="28rpx" />
-      <text wx:if="{{photo.note_count >= 2}}" class="note-count">{{photo.note_count}}</text>
+    <!-- 底部信息区：标签徽标 + 备注蒙层 -->
+    <view class="card-footer" wx:if="{{photo.tag_count > 0 || photo.latest_note_content}}">
+      <!-- 标签提示 -->
+      <view class="tag-badge" wx:if="{{photo.tag_count > 0}}">
+        <t-icon name="discount" size="24rpx" />
+        <text class="tag-badge-count">{{photo.tag_count}}</text>
+      </view>
+      <!-- 备注蒙层 -->
+      <view class="note-overlay" wx:if="{{photo.latest_note_content}}">
+        <text class="note-overlay-text">{{photo.latest_note_content}}</text>
+      </view>
     </view>
   </view>
 </view>
