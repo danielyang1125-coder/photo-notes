@@ -1,7 +1,5 @@
 <!-- PG-004 图片预览详情 -->
 <view class="page">
-  <t-navbar title="详情" left-arrow bind:go-back="handleBack" />
-
   <!-- 状态 -->
   <page-state
     wx:if="{{pageState !== 'ready'}}"
@@ -11,73 +9,107 @@
   />
 
   <!-- 内容 -->
-  <scroll-view wx:if="{{pageState === 'ready'}}" class="content" scroll-y style="padding-top: {{navTotalHeight}}px; height: calc(100vh - {{navTotalHeight}}px);">
-    <!-- 大图区域（深色底，支持滑动切换） -->
-    <view
-      class="image-area {{swiping ? 'swiping' : ''}}"
-      bind:tap="handleViewImage"
-      bindtouchstart="handleTouchStart"
-      bindtouchmove="handleTouchMove"
-      bindtouchend="handleTouchEnd"
-      style="transform: translateX({{swipeOffset}}px);"
-    >
-      <image src="{{photo.preview_url}}" mode="widthFix" class="preview-image" />
-      <!-- 滑动切换 loading 蒙层 -->
-      <view class="swipe-loading-overlay" wx:if="{{swipeLoading}}">
-        <t-loading theme="circular" size="56rpx" color="#fff" />
-      </view>
-      <!-- 位置指示器 -->
-      <view class="swipe-indicator" wx:if="{{hasSwipeContext && photoIds.length > 1}}">
-        <text>{{currentIndex + 1}}/{{photoIds.length}}</text>
+  <block wx:if="{{pageState === 'ready'}}">
+    <!-- 顶部白色导航栏（状态栏 62 + 导航 44） -->
+    <view class="top-nav" style="padding-top: {{statusBarHeight}}px;">
+      <view class="nav-bar">
+        <view class="nav-back" bind:tap="handleBack" hover-class="nav-back--hover" hover-stay-time="80">
+          <view class="nav-back-icon"></view>
+        </view>
+        <view class="nav-more" bind:tap="handleShowActions" hover-class="nav-more--hover" hover-stay-time="80">
+          <view class="nav-more-dot"></view>
+          <view class="nav-more-dot"></view>
+          <view class="nav-more-dot"></view>
+        </view>
       </view>
     </view>
 
-    <!-- 下方内容卡片（白色底 + 顶部圆角，覆盖在图片下方） -->
-    <view class="detail-card">
-      <!-- 日期行 -->
-      <view class="detail-date-row">
-        <text class="detail-date">{{photo.shoot_time_str}}</text>
-      </view>
-
-      <!-- 标签区 -->
-      <view class="detail-section">
-        <photo-tag-section tags="{{tags}}" bind:edit="handleEditTags" />
-      </view>
-
-      <!-- 图片信息 -->
-      <view class="detail-section">
-        <text class="detail-section-title">图片信息</text>
-        <view class="info-row"><text class="info-label">拍摄时间</text><text class="info-value">{{photo.shoot_time_str}}</text></view>
-        <view class="info-row"><text class="info-label">来源</text><text class="info-value">{{photo.time_source === 'EXIF' ? 'EXIF 拍摄' : '上传时间'}}</text></view>
-        <view class="info-row"><text class="info-label">尺寸</text><text class="info-value">{{photo.width}} × {{photo.height}}</text></view>
-        <view class="info-row"><text class="info-label">格式</text><text class="info-value">{{photo.format}}</text></view>
-      </view>
-
-      <!-- 备注列表 -->
-      <view class="detail-section">
-        <view class="section-header">
-          <text class="section-title">备注（{{notes.length}}）</text>
-          <t-button size="small" theme="primary" variant="text" bind:tap="handleAddNote">添加</t-button>
+    <!-- 主内容区（向下滚动） -->
+    <scroll-view
+      class="content"
+      scroll-y
+      style="padding-top: {{navTotalHeight}}px;"
+    >
+      <!-- 大图区域（深色底） -->
+      <view
+        class="image-area {{swiping ? 'swiping' : ''}}"
+        bind:tap="handleViewImage"
+        bindtouchstart="handleTouchStart"
+        bindtouchmove="handleTouchMove"
+        bindtouchend="handleTouchEnd"
+        style="transform: translateX({{swipeOffset}}px);"
+      >
+        <image src="{{photo.preview_url}}" mode="widthFix" class="preview-image" />
+        <!-- 滑动切换 loading 蒙层 -->
+        <view class="swipe-loading-overlay" wx:if="{{swipeLoading}}">
+          <t-loading theme="circular" size="56rpx" color="#fff" />
         </view>
-        <view wx:if="{{notes.length === 0}}" class="empty-notes">暂无备注</view>
-        <view wx:for="{{notes}}" wx:key="_id" class="note-item" bind:tap="handleNoteTap" data-id="{{item._id}}">
-          <text class="note-content">{{item.content}}</text>
+        <!-- 位置指示器 -->
+        <view class="swipe-indicator" wx:if="{{hasSwipeContext && photoIds.length > 1}}">
+          <text>{{currentIndex + 1}}/{{photoIds.length}}</text>
+        </view>
+      </view>
+
+      <!-- 标签区（白底，紧贴图片下方） -->
+      <view class="tags-section">
+        <scroll-view scroll-x class="tags-scroll" enhanced show-scrollbar="{{false}}">
+          <view class="tags-row">
+            <view
+              wx:for="{{tags}}"
+              wx:key="_id"
+              class="tag-chip"
+            >
+              <text class="tag-chip-text">{{item.name}}</text>
+            </view>
+            <view class="tag-chip tag-chip--edit" bind:tap="handleEditTags">
+              <text class="tag-chip-text tag-chip-text--edit">{{tags.length > 0 ? '编辑' : '＋ 添加标签'}}</text>
+              <view wx:if="{{tags.length > 0}}" class="tag-chip-edit-icon"></view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+
+      <!-- 备注区 -->
+      <view class="notes-section">
+        <!-- 标题行（无添加按钮，添加在底部） -->
+        <view class="notes-header">
+          <text class="notes-title">备注（共 {{notes.length}} 条）</text>
+        </view>
+
+        <!-- 备注列表 -->
+        <view wx:if="{{notes.length === 0}}" class="notes-empty">暂无备注</view>
+        <view wx:for="{{notes}}" wx:key="_id" class="note-card">
+          <view class="note-content">{{item.content}}</view>
           <view class="note-meta">
-            <text class="note-time">{{item.created_at}}</text>
-            <text wx:if="{{item.updated_at > item.created_at}}" class="note-edited">已编辑</text>
+            <view class="note-meta-left">
+              <text class="note-time">{{item.created_at}}</text>
+              <view wx:if="{{item.updated_at > item.created_at}}" class="note-edited-badge">
+                <text class="note-edited-text">已编辑</text>
+              </view>
+            </view>
+            <view class="note-actions">
+              <text class="note-action note-action--edit" bind:tap="handleEditNote" data-id="{{item._id}}">编辑</text>
+              <text class="note-action note-action--delete" bind:tap="handleDeleteNote" data-id="{{item._id}}">删除</text>
+            </view>
           </view>
         </view>
       </view>
 
-      <!-- 删除操作 -->
-      <view class="detail-section detail-section--action">
-        <t-button theme="danger" variant="outline" block bind:tap="handleDelete">删除图片及所有备注</t-button>
+      <!-- 底部添加备注按钮 -->
+      <view class="add-note-wrap">
+        <view class="add-note-btn" bind:tap="handleAddNote" hover-class="add-note-btn--hover" hover-stay-time="80">
+          <view class="add-note-icon">
+            <view class="add-note-plus-h"></view>
+            <view class="add-note-plus-v"></view>
+          </view>
+          <text class="add-note-label">添加备注</text>
+        </view>
       </view>
 
       <!-- 底部安全距离 -->
-      <view class="detail-bottom-safe"></view>
-    </view>
-  </scroll-view>
+      <view class="bottom-safe"></view>
+    </scroll-view>
+  </block>
 
   <!-- 操作菜单 -->
   <t-action-sheet
@@ -87,7 +119,7 @@
     bind:cancel="handleActionCancel"
   />
 
-  <!-- 删除确认 -->
+  <!-- 删除确认（图片级） -->
   <t-dialog
     visible="{{showDeleteConfirm}}"
     title="删除图片"

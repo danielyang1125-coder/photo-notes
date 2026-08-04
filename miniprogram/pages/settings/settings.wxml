@@ -16,7 +16,6 @@
           color="{{usagePercent >= 85 ? '#ED7B2F' : '#0052D9'}}"
           track-color="#F2F3F5"
         />
-        <text class="storage-percent {{usagePercent >= 85 ? 'warning' : ''}}">{{usagePercent}}%</text>
       </view>
     </view>
 

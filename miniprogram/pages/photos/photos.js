@@ -24,7 +24,6 @@ Page({
     statusBarHeight: 0,
     navBarHeight: 44,
     navTotalHeight: 44,
-    settingsRight: 12,
     scrollTop: 0,
   },
 
@@ -74,12 +73,10 @@ Page({
 
   _initNavigation() {
     const layout = navbar.getNavLayout()
-    const settingsRight = navbar.getMenuRightMargin()
     this.setData({
       statusBarHeight: layout.statusBarHeight,
       navBarHeight: layout.navBarHeight,
       navTotalHeight: layout.totalHeight,
-      settingsRight,
     })
   },
 
@@ -115,10 +112,12 @@ Page({
 
   _isCurrent(snapshot) {
     const current = this.data.filter
-    return snapshot.version === this._queryVersion &&
+    return (
+      snapshot.version === this._queryVersion &&
       snapshot.scope === current.scope &&
       snapshot.tagId === current.tagId &&
       snapshot.cursor === this.data.cursor
+    )
   },
 
   async loadPhotos(requestType) {
@@ -141,7 +140,8 @@ Page({
       this.setData({ loadingMore: true, loadMoreError: '' })
     }
 
-    const request = photosService.list(snapshot.scope, snapshot.tagId, snapshot.cursor)
+    const request = photosService
+      .list(snapshot.scope, snapshot.tagId, snapshot.cursor)
       .then(async (res) => {
         if (!this._isCurrent(snapshot)) return
         const result = res.result || {}
@@ -156,9 +156,9 @@ Page({
         }
 
         const incoming = (result.data && result.data.list) || []
-        const base = (!snapshot.cursor) ? [] : this.data.list
+        const base = !snapshot.cursor ? [] : this.data.list
         const seen = new Set()
-        const merged = [...base, ...incoming].filter(item => {
+        const merged = [...base, ...incoming].filter((item) => {
           if (!item || !item._id || seen.has(item._id)) return false
           seen.add(item._id)
           return true
@@ -169,7 +169,10 @@ Page({
           leftList: columns.left,
           rightList: columns.right,
           hasMore: Boolean(result.data && result.data.hasMore),
-          cursor: result.data && result.data.nextCursor ? result.data.nextCursor : null,
+          cursor:
+            result.data && result.data.nextCursor
+              ? result.data.nextCursor
+              : null,
           pageState: merged.length === 0 ? 'empty' : 'ready',
           loadMoreError: '',
         })
@@ -195,7 +198,8 @@ Page({
         }
       })
       .finally(() => {
-        if (this._inflight[requestKey] === request) delete this._inflight[requestKey]
+        if (this._inflight[requestKey] === request)
+          delete this._inflight[requestKey]
         if (this._refreshRequestKey === requestKey) {
           this._refreshRequestKey = ''
           this.setData({ refreshing: false, refresherTriggered: false })
@@ -211,7 +215,11 @@ Page({
 
   async _handleInvalidTag(snapshot) {
     if (!this._isCurrent(snapshot)) return
-    wx.showToast({ title: '标签已不存在，已切换到全部图片', icon: 'none', duration: 2200 })
+    wx.showToast({
+      title: '标签已不存在，已切换到全部图片',
+      icon: 'none',
+      duration: 2200,
+    })
     this.setData({ filter: { scope: 'ALL', tagId: null } })
     this._beginQuery(true)
     this._refreshQuickTags()
@@ -223,10 +231,11 @@ Page({
     const right = []
     let leftHeight = 0
     let rightHeight = 0
-    list.forEach(item => {
-      const proportional = item.height && item.width
-        ? Math.round((item.height / item.width) * 340)
-        : 340
+    list.forEach((item) => {
+      const proportional =
+        item.height && item.width
+          ? Math.round((item.height / item.width) * 340)
+          : 340
       const imageHeight = Math.min(Math.max(proportional, 180), 560)
       const card = { ...item, _cardHeight: imageHeight }
       if (leftHeight <= rightHeight) {
@@ -241,7 +250,8 @@ Page({
   },
 
   handleLoadMore() {
-    if (this.data.loadingMore || this.data.loadMoreError || !this.data.hasMore) return
+    if (this.data.loadingMore || this.data.loadMoreError || !this.data.hasMore)
+      return
     this.loadPhotos('loadMore')
   },
 
@@ -261,7 +271,8 @@ Page({
   handleFilterChange(e) {
     const next = e.detail || {}
     const current = this.data.filter
-    if (next.scope === current.scope && (next.tagId || null) === current.tagId) return
+    if (next.scope === current.scope && (next.tagId || null) === current.tagId)
+      return
     this.setData({ filter: { scope: next.scope, tagId: next.tagId || null } })
     this._beginQuery(true)
     this.loadPhotos('filter')
@@ -277,7 +288,10 @@ Page({
   },
 
   handleEmptyAction() {
-    if (this.data.filter.scope === 'ALL' || this.data.filter.scope === 'UNCATEGORIZED') {
+    if (
+      this.data.filter.scope === 'ALL' ||
+      this.data.filter.scope === 'UNCATEGORIZED'
+    ) {
       this.handleOpenUpload()
     } else {
       this.handleViewAll()
@@ -292,7 +306,7 @@ Page({
     const photoId = e.detail.photoId
     if (!photoId) return
     this.setData({ scrollTop: this._currentScrollTop })
-    const photoIds = this.data.list.map(p => p._id)
+    const photoIds = this.data.list.map((p) => p._id)
     const currentIndex = photoIds.indexOf(photoId)
     wx.navigateTo({
       url: `/pages/preview/preview?photoId=${photoId}`,
@@ -310,23 +324,27 @@ Page({
     if (!change || !change.photoId) return
     app.globalData.photoListChange = null
     const original = this.data.list
-    const target = original.find(item => item._id === change.photoId)
+    const target = original.find((item) => item._id === change.photoId)
     if (!target && change.changeType !== 'deleted') return
     let list = original
     if (change.changeType === 'deleted') {
-      list = original.filter(item => item._id !== change.photoId)
+      list = original.filter((item) => item._id !== change.photoId)
       this.refreshSpaceUsage()
     } else if (change.changeType === 'noteCountChanged') {
-      list = original.map(item => item._id === change.photoId
-        ? { ...item, note_count: Number(change.noteCount) || 0 }
-        : item)
+      list = original.map((item) =>
+        item._id === change.photoId
+          ? { ...item, note_count: Number(change.noteCount) || 0 }
+          : item,
+      )
     } else if (change.changeType === 'tagsChanged') {
       const tagIds = change.tagIds || []
       const filter = this.data.filter
-      const stillMatches = filter.scope === 'ALL' ||
+      const stillMatches =
+        filter.scope === 'ALL' ||
         (filter.scope === 'UNCATEGORIZED' && tagIds.length === 0) ||
         (filter.scope === 'TAG' && tagIds.includes(filter.tagId))
-      if (!stillMatches) list = original.filter(item => item._id !== change.photoId)
+      if (!stillMatches)
+        list = original.filter((item) => item._id !== change.photoId)
     }
     if (list !== original) {
       const columns = this._splitToColumns(list)
@@ -337,7 +355,8 @@ Page({
         pageState: list.length === 0 ? 'empty' : 'ready',
         scrollTop: this._currentScrollTop,
       })
-      if (list.length < original.length && this.data.hasMore) this.loadPhotos('loadMore')
+      if (list.length < original.length && this.data.hasMore)
+        this.loadPhotos('loadMore')
     }
   },
 
@@ -350,18 +369,23 @@ Page({
     if (this._creatingTag) return
     this._creatingTag = true
     try {
-      const modal = await new Promise(resolve => wx.showModal({
-        title: '新建标签',
-        editable: true,
-        placeholderText: '请输入标签名称',
-        confirmText: '创建',
-        success: resolve,
-        fail: () => resolve({ confirm: false }),
-      }))
+      const modal = await new Promise((resolve) =>
+        wx.showModal({
+          title: '新建标签',
+          editable: true,
+          placeholderText: '请输入标签名称',
+          confirmText: '创建',
+          success: resolve,
+          fail: () => resolve({ confirm: false }),
+        }),
+      )
       if (!modal.confirm) return
       const res = await tagsService.create(modal.content || '')
       if (!res.result || res.result.code !== 'SUCCESS') {
-        wx.showToast({ title: (res.result && res.result.message) || '创建失败', icon: 'none' })
+        wx.showToast({
+          title: (res.result && res.result.message) || '创建失败',
+          icon: 'none',
+        })
         return
       }
       app.globalData.refreshTags = false
@@ -385,12 +409,11 @@ Page({
     this._navigatingTags = true
     wx.navigateTo({
       url: '/pages/tag-manager/tag-manager',
-      complete: () => setTimeout(() => { this._navigatingTags = false }, 500),
+      complete: () =>
+        setTimeout(() => {
+          this._navigatingTags = false
+        }, 500),
     })
-  },
-
-  handleOpenSettings() {
-    wx.navigateTo({ url: '/pages/settings/settings' })
   },
 
   async refreshSpaceUsage(showWarning = true) {
@@ -399,7 +422,8 @@ Page({
       if (!res.result || res.result.code !== 'SUCCESS') return null
       const usage = res.result.data
       app.globalData.spaceUsage = usage
-      const shouldShow = showWarning && usage.warning && !app.globalData.spaceWarningShown
+      const shouldShow =
+        showWarning && usage.warning && !app.globalData.spaceWarningShown
       if (shouldShow) app.globalData.spaceWarningShown = true
       const patch = { spaceFull: Boolean(usage.full) }
       if (showWarning) patch.spaceWarning = Boolean(shouldShow)
@@ -412,13 +436,17 @@ Page({
     }
   },
 
-  async handleOpenUpload() {
-    const usage = await this.refreshSpaceUsage(false)
-    if (usage && usage.full) {
+  handleOpenUpload() {
+    // 先用缓存值即时判断（onLoad 已预加载），避免阻塞 UI
+    const cached = app.globalData.spaceUsage
+    if (cached && cached.full) {
       wx.showToast({ title: '存储空间不足，请先清理图片', icon: 'none' })
       return
     }
+    // 立即打开弹窗，不等待网络
     this.setData({ showSourcePopup: true })
+    // 后台静默刷新，保持缓存新鲜度
+    this.refreshSpaceUsage(false)
   },
 
   handleSourcePopupChange(e) {
@@ -454,5 +482,4 @@ Page({
       this.refreshSpaceUsage()
     }
   },
-
 })

@@ -12,11 +12,12 @@ Page({
     notes: [],
     showActionSheet: false,
     showDeleteConfirm: false,
-    actionSheetItems: [{ label: '删除图片', color: '#E34D59' }],
+    actionSheetItems: [{ label: '删除图片', color: '#D54941' }],
     showNoteEditor: false,
     editingNote: null,
     showTagPicker: false,
     navTotalHeight: 0,
+    statusBarHeight: 0,
     swipeLoading: false,  // 滑动切换时的 loading 蒙层
     // 滑动切换
     photoIds: [],
@@ -61,7 +62,10 @@ Page({
 
   _calcNavHeight() {
     const layout = navbar.getNavLayout()
-    this.setData({ navTotalHeight: layout.totalHeight })
+    this.setData({
+      navTotalHeight: layout.totalHeight,
+      statusBarHeight: layout.statusBarHeight,
+    })
   },
 
   _fmtTime(val) {
@@ -88,9 +92,22 @@ Page({
   _fmtNoteTimes(notes) {
     return (notes || []).map(n => ({
       ...n,
+      _raw_created_at: n.created_at,
+      _raw_updated_at: n.updated_at,
       created_at: this._fmtTime(n.created_at),
       updated_at: this._fmtTime(n.updated_at),
     }))
+  },
+
+  _toISOString(val) {
+    if (!val) return ''
+    // CloudBase ServerDate 序列化对象：{$date: timestamp}
+    if (typeof val === 'object' && val !== null && val.$date) {
+      return new Date(val.$date).toISOString()
+    }
+    const d = new Date(val)
+    if (isNaN(d.getTime())) return ''
+    return d.toISOString()
   },
 
   async loadDetail() {
@@ -246,6 +263,10 @@ Page({
     wx.previewImage({ urls, current: url })
   },
 
+  handleShowActions() {
+    this.setData({ showActionSheet: true })
+  },
+
   handleEditTags() {
     this.setData({ showTagPicker: true })
   },
@@ -266,20 +287,24 @@ Page({
     this.setData({ showNoteEditor: true, editingNote: null })
   },
 
-  handleNoteTap(e) {
+  handleEditNote(e) {
     const noteId = e.currentTarget.dataset.id
-    const note = this.data.notes.find(n => n._id === noteId)
+    const note = (this.data.notes || []).find(n => n._id === noteId)
     if (!note) return
-    wx.showActionSheet({
-      itemList: ['编辑', '删除'],
-      success: (res) => {
-        if (res.tapIndex === 0) {
-          this.setData({ showNoteEditor: true, editingNote: note })
-        } else if (res.tapIndex === 1) {
-          this.handleNoteDelete(note)
-        }
-      },
-    })
+    // 还原原始时间戳为 ISO 字符串，保证乐观锁 updatedAt 格式正确
+    const editingNote = {
+      ...note,
+      updated_at: this._toISOString(note._raw_updated_at),
+      created_at: note._raw_created_at || note.created_at,
+    }
+    this.setData({ showNoteEditor: true, editingNote })
+  },
+
+  handleDeleteNote(e) {
+    const noteId = e.currentTarget.dataset.id
+    const note = (this.data.notes || []).find(n => n._id === noteId)
+    if (!note) return
+    this.handleNoteDelete(note)
   },
 
   handleNoteCancel() {
@@ -291,7 +316,13 @@ Page({
     if (!note) return
     this.setData({ showNoteEditor: false, editingNote: null })
     // 格式化时间并本地更新列表，避免 loadDetail() 导致页面闪烁
-    const formatted = { ...note, created_at: this._fmtTime(note.created_at), updated_at: this._fmtTime(note.updated_at) }
+    const formatted = {
+      ...note,
+      _raw_created_at: note.created_at,
+      _raw_updated_at: note.updated_at,
+      created_at: this._fmtTime(note.created_at),
+      updated_at: this._fmtTime(note.updated_at),
+    }
     const notes = [...this.data.notes]
     const existingIndex = notes.findIndex(n => n._id === formatted._id)
     if (existingIndex >= 0) {

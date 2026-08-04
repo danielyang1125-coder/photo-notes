@@ -58,28 +58,13 @@
 
     <!-- 结果摘要 + 添加标签按钮 -->
     <view wx:if="{{successCount > 0 || failedCount > 0}}" class="result-section">
-      <!-- 成功/失败统计 -->
-      <view class="result-info">
-        <view wx:if="{{successCount > 0}}" class="result-stat stat-success">
-          <view class="stat-dot dot-success" />
-          <text class="stat-label">成功 {{successCount}} 张</text>
-        </view>
-        <view wx:if="{{failedCount > 0}}" class="result-stat stat-failed">
-          <view class="stat-dot dot-failed" />
-          <text class="stat-label">失败 {{failedCount}} 张</text>
-        </view>
-      </view>
-
       <!-- 为本批图片添加标签 -->
       <view
         wx:if="{{successCount > 0}}"
         class="add-tag-btn {{allDone ? '' : 'is-disabled'}}"
         bind:tap="handleAddTags"
       >
-        <view class="add-tag-icon">
-          <text class="tag-glyph">🏷</text>
-        </view>
-        <text class="add-tag-label">为本批图片添加标签</text>
+        <text class="add-tag-label">批量添加标签</text>
       </view>
     </view>
 

@@ -9,7 +9,6 @@
       data-index="{{index}}"
       bind:tap="switchTab"
     >
-      <text class="tab-icon">{{item.icon}}</text>
       <text class="tab-label">{{item.text}}</text>
     </view>
   </view>

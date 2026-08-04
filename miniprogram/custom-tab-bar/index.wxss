@@ -13,15 +13,15 @@
   justify-content: center;
   padding-top: 21rpx;
   box-sizing: border-box;
-  background: #F2F2F2;
+  background: #f2f2f2;
 }
 
 /* 白色胶囊：宽 351pt 高 62pt 圆角 36pt 投影 0 -2pt 8pt rgba(0,0,0,0.08) */
 .tab-bar-pill {
   display: flex;
   width: 702rpx;
-  height: 124rpx;
-  background: #FFFFFF;
+  height: 112rpx;
+  background: #ffffff;
   border-radius: 72rpx;
   box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.08);
   overflow: hidden;
@@ -35,24 +35,26 @@
   align-items: center;
   justify-content: center;
   gap: 4rpx;
-  border-radius: 52rpx;     /* 选中态圆角 26pt */
-  color: #A6A6A6;
-  transition: background 0.25s ease, color 0.25s ease;
-  margin: 8rpx 4rpx;        /* 胶囊内边距 */
+  border-radius: 52rpx; /* 选中态圆角 26pt */
+  color: #a6a6a6;
+  transition:
+    background 0.25s ease,
+    color 0.25s ease;
+  margin: 8rpx; /* 胶囊内边距 */
 }
 
 /* 选中态：蓝色背景 */
 .tab-item.active {
-  background: #0052D9;
-  color: #FFFFFF;
+  background: #0052d9;
+  color: #ffffff;
 }
 
 .tab-icon {
-  font-size: 36rpx;          /* 18pt */
+  font-size: 36rpx; /* 18pt */
   line-height: 1;
 }
 
 .tab-label {
-  font-size: 20rpx;          /* 10pt */
+  font-size: 26rpx; /* 10pt */
   font-weight: 500;
 }

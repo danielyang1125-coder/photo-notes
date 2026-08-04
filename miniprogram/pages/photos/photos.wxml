@@ -3,15 +3,6 @@
   <view class="nav-fixed" style="height: {{navTotalHeight}}px; padding-top: {{statusBarHeight}}px;">
     <view class="nav-inner" style="height: {{navBarHeight}}px;">
       <text class="nav-title">图片</text>
-      <view
-        class="settings-button"
-        style="right: {{settingsRight}}px;"
-        role="button"
-        aria-label="打开设置"
-        bind:tap="handleOpenSettings"
-      >
-        <t-icon name="setting" size="42rpx" />
-      </view>
     </view>
   </view>
 

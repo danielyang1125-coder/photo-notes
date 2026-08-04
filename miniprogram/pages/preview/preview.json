@@ -1,13 +1,9 @@
 {
   "usingComponents": {
-    "t-navbar": "tdesign-miniprogram/navbar/navbar",
-    "t-image-viewer": "tdesign-miniprogram/image-viewer/image-viewer",
-    "t-tag": "tdesign-miniprogram/tag/tag",
-    "t-button": "tdesign-miniprogram/button/button",
+    "t-loading": "tdesign-miniprogram/loading/loading",
     "t-action-sheet": "tdesign-miniprogram/action-sheet/action-sheet",
     "t-dialog": "tdesign-miniprogram/dialog/dialog",
     "page-state": "../../components/page-state/page-state",
-    "photo-tag-section": "../../components/photo-tag-section/photo-tag-section",
     "note-editor": "../../components/note-editor/note-editor",
     "tag-picker": "../../components/tag-picker/tag-picker"
   },
