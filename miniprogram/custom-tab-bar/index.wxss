@@ -1,29 +1,33 @@
 /* -------- 自定义 Tab Bar 胶囊浮层 -------- */
+/* 设计稿：背景 #F2F2F2，高 83pt = 166rpx */
 .tab-bar-wrap {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 166rpx;  /* 83pt */
+  height: 166rpx;
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12rpx;
+  padding-top: 21rpx;
   box-sizing: border-box;
+  background: #F2F2F2;
 }
 
-/* 白色胶囊容器 */
+/* 白色胶囊：宽 351pt 高 62pt 圆角 36pt 投影 0 -2pt 8pt rgba(0,0,0,0.08) */
 .tab-bar-pill {
   display: flex;
-  width: 702rpx;   /* 351pt */
-  height: 124rpx;  /* 62pt */
-  background: var(--color-surface-base, #FFFFFF);
-  border-radius: var(--radius-pill, 52rpx);
-  box-shadow: var(--shadow-tab, 0 4rpx 16rpx rgba(0, 0, 0, 0.08));
+  width: 702rpx;
+  height: 124rpx;
+  background: #FFFFFF;
+  border-radius: 72rpx;
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
 
-/* 单个 Tab */
+/* 单个 Tab：约 117pt = 234rpx */
 .tab-item {
   flex: 1;
   display: flex;
@@ -31,27 +35,24 @@
   align-items: center;
   justify-content: center;
   gap: 4rpx;
-  border-radius: var(--radius-pill, 52rpx);
+  border-radius: 52rpx;     /* 选中态圆角 26pt */
+  color: #A6A6A6;
   transition: background 0.25s ease, color 0.25s ease;
+  margin: 8rpx 4rpx;        /* 胶囊内边距 */
 }
 
-/* 非激活态 */
-.tab-item {
-  color: var(--color-text-placeholder, #A6A6A6);
-}
-
-/* 激活态 */
+/* 选中态：蓝色背景 */
 .tab-item.active {
-  background: var(--color-primary, #0052D9);
+  background: #0052D9;
   color: #FFFFFF;
 }
 
 .tab-icon {
-  font-size: 36rpx;  /* 18pt */
+  font-size: 36rpx;          /* 18pt */
   line-height: 1;
 }
 
 .tab-label {
-  font-size: var(--font-size-sm, 24rpx);
+  font-size: 20rpx;          /* 10pt */
   font-weight: 500;
 }

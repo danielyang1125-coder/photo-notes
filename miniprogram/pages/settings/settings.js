@@ -4,15 +4,26 @@ const navbar = require('../../utils/navbar')
 
 Page({
   data: {
-    usedBytes: 0, limitBytes: 524288000,
-    usedMB: '0', limitMB: '500',
+    usedBytes: 0,
+    limitBytes: 524288000,
+    usedMB: '0',
+    limitMB: '500',
     usagePercent: 0,
     showDeleteDialog: false,
     navTotalHeight: 0,
   },
 
-  onLoad() { this._calcNavHeight(); this.loadStatus() },
-  onShow() { this.loadStatus() },
+  onLoad() {
+    this._calcNavHeight()
+    this.loadStatus()
+  },
+  onShow() {
+    // 同步自定义 tabBar 选中态
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 2 })
+    }
+    this.loadStatus()
+  },
 
   _calcNavHeight() {
     const layout = navbar.getNavLayout()
@@ -21,9 +32,11 @@ Page({
 
   _applyUsage(used, limit) {
     this.setData({
-      usedBytes: used, limitBytes: limit,
-      usedMB: (used / 1048576).toFixed(1), limitMB: (limit / 1048576).toFixed(0),
-      usagePercent: limit > 0 ? Math.round(used / limit * 100) : 0,
+      usedBytes: used,
+      limitBytes: limit,
+      usedMB: (used / 1048576).toFixed(1),
+      limitMB: (limit / 1048576).toFixed(0),
+      usagePercent: limit > 0 ? Math.round((used / limit) * 100) : 0,
     })
   },
 
@@ -45,16 +58,33 @@ Page({
     this._applyUsage(used, limit)
   },
 
-  handleBack() { wx.switchTab({ url: '/pages/photos/photos' }) },
-  handleTagManage() { wx.navigateTo({ url: '/pages/tag-manager/tag-manager' }) },
-  handleDeleteAccount() { this.setData({ showDeleteDialog: true }) },
-  handleCancelDeletion() { this.setData({ showDeleteDialog: false }) },
+  handleBack() {
+    wx.switchTab({ url: '/pages/photos/photos' })
+  },
+  handleTagManage() {
+    wx.navigateTo({ url: '/pages/tag-manager/tag-manager' })
+  },
+  handleDeleteAccount() {
+    this.setData({ showDeleteDialog: true })
+  },
+  handleCancelDeletion() {
+    this.setData({ showDeleteDialog: false })
+  },
   handleConfirmDeletion() {
     this.setData({ showDeleteDialog: false })
-    wx.cloud.callFunction({ name: 'account', data: { type: 'requestDeletion', confirmText: '确认注销' } })
-      .then(res => {
-        if (res.result.code === 'SUCCESS') wx.redirectTo({ url: '/pages/deletion-status/deletion-status' })
-        else wx.showToast({ title: res.result.message || '操作失败', icon: 'none' })
+    wx.cloud
+      .callFunction({
+        name: 'account',
+        data: { type: 'requestDeletion', confirmText: '确认注销' },
+      })
+      .then((res) => {
+        if (res.result.code === 'SUCCESS')
+          wx.redirectTo({ url: '/pages/deletion-status/deletion-status' })
+        else
+          wx.showToast({
+            title: res.result.message || '操作失败',
+            icon: 'none',
+          })
       })
       .catch(() => wx.showToast({ title: '网络异常', icon: 'none' }))
   },

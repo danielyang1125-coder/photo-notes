@@ -22,6 +22,10 @@
       {
         "pagePath": "pages/notes/notes",
         "text": "备注"
+      },
+      {
+        "pagePath": "pages/settings/settings",
+        "text": "我的"
       }
     ]
   },

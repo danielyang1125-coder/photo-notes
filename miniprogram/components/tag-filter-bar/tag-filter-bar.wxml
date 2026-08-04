@@ -2,31 +2,25 @@
 <view class="filter-bar">
   <scroll-view class="filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
     <view class="filter-tags">
-      <t-tag
-        theme="{{active === 'ALL' ? 'primary' : 'default'}}"
-        variant="light"
-        size="medium"
+      <view
+        class="tag-chip {{active === 'ALL' ? 'active' : ''}}"
         data-scope="ALL"
         bind:tap="handleTap"
-      >全部</t-tag>
-      <t-tag
-        theme="{{active === 'UNCATEGORIZED' ? 'primary' : 'default'}}"
-        variant="light"
-        size="medium"
+      >全部</view>
+      <view
+        class="tag-chip {{active === 'UNCATEGORIZED' ? 'active' : ''}}"
         data-scope="UNCATEGORIZED"
         bind:tap="handleTap"
-      >未分类</t-tag>
-      <t-tag
+      >未分类</view>
+      <view
         wx:for="{{quickTags}}"
         wx:if="{{tagState === 'ready'}}"
         wx:key="_id"
-        theme="{{active === 'TAG' && activeTagId === item._id ? 'primary' : 'default'}}"
-        variant="light"
-        size="medium"
+        class="tag-chip {{active === 'TAG' && activeTagId === item._id ? 'active' : ''}}"
         data-scope="TAG"
         data-tag-id="{{item._id}}"
         bind:tap="handleTap"
-      ><text class="tag-name">{{item.name}}</text></t-tag>
+      ><text class="tag-name">{{item.name}}</text></view>
       <view wx:if="{{tagState === 'loading'}}" class="tag-skeleton">
         <view class="skeleton-pill"></view>
         <view class="skeleton-pill short"></view>

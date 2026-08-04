@@ -5,12 +5,17 @@ Component({
       {
         pagePath: '/pages/photos/photos',
         text: '图片',
-        icon: '🖼',
+        icon: '',
       },
       {
         pagePath: '/pages/notes/notes',
         text: '备注',
-        icon: '📝',
+        icon: '',
+      },
+      {
+        pagePath: '/pages/settings/settings',
+        text: '我的',
+        icon: '',
       },
     ],
   },

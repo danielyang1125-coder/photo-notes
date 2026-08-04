@@ -1,29 +1,33 @@
 .photo-card {
   break-inside: avoid;
   margin-bottom: 16rpx;
-  border-radius: var(--radius-card, 16rpx);
+  border-radius: 16rpx; /* 8pt */
   overflow: hidden;
-  background: var(--color-surface-base, #fff);
+  background: #ffffff;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.08); /* 0 1pt 3pt */
   position: relative;
 }
+
 .image-wrap {
   position: relative;
   width: 100%;
   background: #e9e9e9;
 }
+
 .card-image {
   width: 100%;
   height: 100%;
   display: block;
 }
+
 .image-placeholder {
-  display:flex;
-  width:100%;
-  height:100%;
-  align-items:center;
-  justify-content:center;
-  color:#aaa;
-  font-size:22rpx;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  font-size: 22rpx;
 }
 /* 卡片底部信息容器 — 绝对定位，flex 列布局 */
 .card-footer {

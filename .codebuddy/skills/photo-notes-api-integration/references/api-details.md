@@ -1,6 +1,6 @@
-# 前端 API 对接文档 — 图片笔记小程序 V1.0.0
+# 图片笔记小程序 - API 详细文档
 
-> 基于云端实际部署代码梳理，最后更新：2026-07-30  
+> 基于云端实际部署代码梳理，最后更新：2026-07-30
 > 环境：`cloud1-d0gsee3m13c2b446c`（ap-shanghai，个人版）
 
 ---
@@ -725,17 +725,124 @@ type: "getDeletionStatus"
 
 ---
 
-## 8. 前端适配清单
+## 8. 数据库集合 Schema
 
-### 8.1 ✅ 上传协议切换（已完成）
+### 8.1 `users`
 
-| 旧 | 新 |
-|---|---|
-| 客户端自定 cloudPath | prepare 获取服务端签发路径 |
-| confirm 传 size/width/height/format | confirm 仅传 attemptId/fileId/shootTime/timeSource |
-| 无 cancel | cancel(attemptIds) 支持取消 |
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `_id` | string | = openid |
+| `_openid` | string | 微信 openid |
+| `status` | string | `ACTIVE` / `DELETING` / `DELETED` |
+| `used_bytes` | number | 已用空间（字节） |
+| `limit_bytes` | number | 总空间（默认 524288000 = 500MB） |
+| `created_at` | Date | 创建时间 |
+| `updated_at` | Date | 更新时间 |
 
-### 8.2 ❌ 分页切换（待修改）
+### 8.2 `photos`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `_id` | string | 随机 hex |
+| `_openid` | string | 所属用户 |
+| `file_id` | string | 云存储 fileID（`cloud://...`） |
+| `task_id` | string | 上传幂等键 |
+| `upload_attempt_id` | string | 关联的上传 attempt |
+| `file_size` | number | 文件大小（字节） |
+| `width` | number | 图片宽度（px） |
+| `height` | number | 图片高度（px） |
+| `format` | string | 格式（`JPEG` / `PNG`） |
+| `sha256` | string | 文件 SHA-256 |
+| `shoot_time` | Date\|null | 拍摄时间 |
+| `time_source` | string | `EXIF` / `UPLOAD_TIME` |
+| `upload_time` | Date | 上传时间 |
+| `status` | string | `ACTIVE` / `DELETING` |
+| `tag_count` | number | 标签数（0~5，计数器） |
+| `note_count` | number | 备注数（实时查询，非持久化） |
+| `deleting_at` | Date\|null | 删除提交时间 |
+
+### 8.3 `notes`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `_id` | string | 自动生成 |
+| `_openid` | string | 所属用户 |
+| `photo_id` | string | 关联图片 ID |
+| `photo_file_id` | string | 关联图片的 fileID（用于生成缩略图） |
+| `content` | string | 备注内容（1~1000 code point） |
+| `content_code_point_count` | number | Unicode code point 长度 |
+| `photo_shoot_time` | Date | 图片拍摄时间快照 |
+| `created_at` | Date | 创建时间 |
+| `updated_at` | Date | 更新时间（乐观锁） |
+
+### 8.4 `tags`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `_id` | string | 自动生成 |
+| `_openid` | string | 所属用户 |
+| `name` | string | 标签名（1~12 code point） |
+| `normalized_name` | string | 规范化名称（拉丁小写，唯一索引，不对外暴露） |
+| `photo_count` | number | 关联图片数（计数器） |
+| `last_used_at` | Date | 最后使用时间 |
+| `created_at` | Date | 创建时间 |
+| `updated_at` | Date | 更新时间 |
+
+### 8.5 `photo_tags`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `_id` | string | 自动生成 |
+| `_openid` | string | 所属用户 |
+| `photo_id` | string | 图片 ID |
+| `tag_id` | string | 标签 ID |
+| `photo_upload_time` | Date | 图片上传时间快照（TAG scope 排序用） |
+
+### 8.6 `upload_attempts`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `_id` | string | 32-char hex（attemptId） |
+| `_openid` | string | 所属用户 |
+| `task_id` | string | 客户端幂等键 |
+| `status` | string | `PREPARED` / `CONFIRMED` / `CANCELED` / `EXPIRED` |
+| `pending_cloud_path` | string | 客户端上传目标路径 |
+| `pending_file_id` | string\|null | confirm 期间暂存的 fileID |
+| `promoted_file_id` | string\|null | 提升后的 fileID |
+| `promoted_at` | Date\|null | 提升时间 |
+| `verified_meta` | Object\|null | 验证后的图片元数据 |
+| `photo_id` | string\|null | 关联的 photo ID（CONFIRMED 后） |
+| `expires_at` | Date | 过期时间（24h） |
+| `canceled_at` | Date\|null | 取消时间 |
+| `confirm_lease_token` | string\|null | confirm 租约令牌 |
+| `confirm_lease_expire_at` | Date\|null | 租约过期时间 |
+
+### 8.7 `deletion_tasks`
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `_id` | string | 自动生成 |
+| `_openid` | string | 所属用户（注销完成后清空） |
+| `type` | string | `PHOTO_DELETE` / `ACCOUNT_DELETION` / 系统检查点 |
+| `task_key` | string | 唯一键（`<type>:<id>`） |
+| `status` | string | `PENDING` / `PROCESSING` / `RETRYING` / `COMPLETED` / `MANUAL_REQUIRED` |
+| `current_stage` | string | 当前执行阶段 |
+| `stage_cursor` | Object | 各阶段游标状态 |
+| `retry_count` | number | 重试次数 |
+| `next_retry_at` | Date\|null | 下次重试时间 |
+| `lease_token` | string\|null | 租约令牌 |
+| `lease_expire_at` | Date\|null | 租约过期时间 |
+| `file_id` | string\|null | 关联文件 ID（图片删除） |
+| `file_size` | number\|null | 文件大小（图片删除） |
+| `photo_id` | string\|null | 关联图片 ID |
+| `applied_at` | Date | 任务创建时间 |
+| `completed_at` | Date\|null | 完成时间 |
+
+---
+
+## 9. 前端适配清单
+
+### 9.1 分页切换（待修改）
 
 | 文件 | 当前 | 需改为 |
 |---|---|---|
@@ -760,19 +867,15 @@ this.setData({
 })
 ```
 
-### 8.3 ❌ 图片删除适配
+### 9.2 图片删除适配
 
-| 文件 | 当前 | 需改为 |
-|---|---|---|
-| 调用 delete 的页面 | 期望同步返回成功 | 接受 `PENDING` 状态，通过 `getDeleteStatus` 轮询 |
+调用 delete 的页面需要接受 `PENDING` 状态，通过 `getDeleteStatus` 轮询。
 
-### 8.4 ❌ batchAddPhotoTags 响应适配
+### 9.3 batchAddPhotoTags 响应适配
 
-| 当前（可能） | 新协议 |
-|---|---|
-| 期望全成功或全失败 | 解析 `successCount/invalidCount/limitExceededCount` 三类结果 |
+需要解析 `successCount/invalidCount/limitExceededCount` 三类结果，分别处理。
 
-### 8.5 ✅ 无需修改
+### 9.4 无需修改
 
 - `user/login`、`getStatus`、`getSpaceUsage` — 协议不变
 - `tag/list`、`create`、`rename`、`delete`、`getPhotoTags`、`updatePhotoTags` — 协议不变
@@ -781,9 +884,9 @@ this.setData({
 
 ---
 
-## 9. 服务层文件对照
+## 10. 服务层文件对照
 
-| 文件 | 需修改 |
+| 文件 | 状态 |
 |---|---|
 | `services/upload.js` | ✅ 已改为新协议 |
 | `services/photos.js` | ❌ `list()` 需改为 cursor |
@@ -794,17 +897,7 @@ this.setData({
 
 ---
 
-## 10. 调试提示
-
-### 10.1 云函数日志
-
-在 CloudBase 控制台 → 云函数 → 选择函数 → 日志，可查看每次调用的：
-- 冷启动时间（Coldstart）
-- 执行耗时（Duration）
-- 内存使用（MemUsage）
-- 安全日志（event/result/safeErrorCode/durationMs/countBucket）
-
-### 10.2 常见问题
+## 11. 常见问题
 
 | 现象 | 可能原因 |
 |---|---|
@@ -816,203 +909,7 @@ this.setData({
 
 ---
 
-## 11. 后端架构概览
-
-### 11.1 模块关系
-
-```
-客户端 (wx.cloud.callFunction)
-  │
-  ├── user       — 登录、用户状态、空间查询
-  ├── upload     — 上传三步协议（prepare → 客户端上传 → confirm）
-  ├── photo      — 图片列表/详情/异步删除
-  ├── note       — 备注 CRUD（乐观锁更新）
-  ├── tag        — 标签 CRUD + 图片-标签关联
-  ├── account    — 账号注销申请/状态查询
-  │
-  └── cleanup    — 定时任务（每5分钟 + 每日3:00）
-       ├── photo-delete-worker     — 异步删除图片（存储→关联数据→最终化）
-       ├── account-delete-worker   — 异步注销账号（4阶段清理）
-       ├── upload-compensation     — 上传补偿清理（过期/孤儿文件）
-       ├── orphan-cleaner          — 孤儿关联关系清理
-       └── count-corrector         — 计数器校正（tag_count, photo_count）
-```
-
-### 11.2 数据库集合清单
-
-| 集合 | 用途 | 关键索引 |
-|---|---|---|
-| `users` | 用户信息（openid 主键） | `_openid` |
-| `photos` | 图片元数据 | `_openid + status`, `_openid + upload_time` |
-| `notes` | 备注内容 | `_openid + photo_id`, `_openid + created_at` |
-| `tags` | 标签定义 | `_openid + normalized_name` (唯一) |
-| `photo_tags` | 图片↔标签多对多关联 | `_openid + photo_id`, `_openid + tag_id + photo_upload_time` |
-| `upload_attempts` | 上传任务生命周期 | `_openid + task_id` (唯一) |
-| `deletion_tasks` | 异步删除/注销任务 + 系统检查点 | `type + task_key` (唯一), `type + status` |
-
-### 11.3 共享基础设施 (`_shared`)
-
-所有云函数模块复制使用同一套 `lib/shared/` 工具：
-
-| 模块 | 功能 |
-|---|---|
-| `router.js` | 请求分发：`type` → handler，active guard 校验 |
-| `response.js` | 统一响应格式 + 30 个中文错误码 |
-| `auth.js` | openid 提取 + 用户状态校验 |
-| `validation.js` | 参数校验（string/enum/array/isoDate/requestId） |
-| `cursor.js` | HMAC-SHA256 签名 keyset 分页 |
-| `transaction.js` | 事务重试 + 唯一冲突检测 |
-| `security-log.js` | 安全日志（脱敏 + 计数桶） |
-| `config.js` | 环境变量冷启动校验 |
-
----
-
-## 12. 异步删除管道
-
-### 12.1 图片删除流程
-
-```
-客户端 delete → 服务端
-  ├── 事务：photo.status = 'DELETING'
-  ├── 创建 deletion_tasks (status: PENDING, type: PHOTO_DELETE)
-  └── 返回 { taskId, status: "PENDING" }
-         │
-         ▼ (客户端立即隐藏图片)
-         │
-定时任务 cleanup (每5分钟)
-  ├── STORAGE_DELETE     — 删除云存储文件
-  ├── RELATED_DATA_CLEANUP — 批量删 notes + photo_tags，回退 tag 计数
-  ├── PHOTO_FINALIZE     — 事务：删 photo doc + users.used_bytes -= file_size
-  └── status → COMPLETED
-         │
-         失败重试：指数退避 (60s·2^n, 最大24h)
-         10次重试或7天后 → MANUAL_REQUIRED (人工介入)
-```
-
-### 12.2 账号注销流程
-
-与图片删除类似，分 4 阶段：`STORAGE_CLEANUP → RELATED_DATA_CLEANUP → PRIMARY_DATA_CLEANUP → USER_FINALIZE`。
-
----
-
-## 13. 数据库集合 Schema
-
-### 13.1 `users`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `_id` | string | = openid |
-| `_openid` | string | 微信 openid |
-| `status` | string | `ACTIVE` / `DELETING` / `DELETED` |
-| `used_bytes` | number | 已用空间（字节） |
-| `limit_bytes` | number | 总空间（默认 524288000 = 500MB） |
-| `created_at` | Date | 创建时间 |
-| `updated_at` | Date | 更新时间 |
-
-### 13.2 `photos`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `_id` | string | 随机 hex |
-| `_openid` | string | 所属用户 |
-| `file_id` | string | 云存储 fileID（`cloud://...`） |
-| `task_id` | string | 上传幂等键 |
-| `upload_attempt_id` | string | 关联的上传 attempt |
-| `file_size` | number | 文件大小（字节） |
-| `width` | number | 图片宽度（px） |
-| `height` | number | 图片高度（px） |
-| `format` | string | 格式（`JPEG` / `PNG`） |
-| `sha256` | string | 文件 SHA-256 |
-| `shoot_time` | Date\|null | 拍摄时间 |
-| `time_source` | string | `EXIF` / `UPLOAD_TIME` |
-| `upload_time` | Date | 上传时间 |
-| `status` | string | `ACTIVE` / `DELETING` |
-| `tag_count` | number | 标签数（0~5，计数器） |
-| `note_count` | number | 备注数（实时查询，非持久化） |
-| `deleting_at` | Date\|null | 删除提交时间 |
-
-### 13.3 `notes`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `_id` | string | 自动生成 |
-| `_openid` | string | 所属用户 |
-| `photo_id` | string | 关联图片 ID |
-| `photo_file_id` | string | 关联图片的 fileID（用于生成缩略图） |
-| `content` | string | 备注内容（1~1000 code point） |
-| `content_code_point_count` | number | Unicode code point 长度 |
-| `photo_shoot_time` | Date | 图片拍摄时间快照 |
-| `created_at` | Date | 创建时间 |
-| `updated_at` | Date | 更新时间（乐观锁） |
-
-### 13.4 `tags`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `_id` | string | 自动生成 |
-| `_openid` | string | 所属用户 |
-| `name` | string | 标签名（1~12 code point） |
-| `normalized_name` | string | 规范化名称（拉丁小写，唯一索引，不对外暴露） |
-| `photo_count` | number | 关联图片数（计数器） |
-| `last_used_at` | Date | 最后使用时间 |
-| `created_at` | Date | 创建时间 |
-| `updated_at` | Date | 更新时间 |
-
-### 13.5 `photo_tags`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `_id` | string | 自动生成 |
-| `_openid` | string | 所属用户 |
-| `photo_id` | string | 图片 ID |
-| `tag_id` | string | 标签 ID |
-| `photo_upload_time` | Date | 图片上传时间快照（TAG scope 排序用） |
-
-### 13.6 `upload_attempts`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `_id` | string | 32-char hex（attemptId） |
-| `_openid` | string | 所属用户 |
-| `task_id` | string | 客户端幂等键 |
-| `status` | string | `PREPARED` / `CONFIRMED` / `CANCELED` / `EXPIRED` |
-| `pending_cloud_path` | string | 客户端上传目标路径 |
-| `pending_file_id` | string\|null | confirm 期间暂存的 fileID |
-| `promoted_file_id` | string\|null | 提升后的 fileID |
-| `promoted_at` | Date\|null | 提升时间 |
-| `verified_meta` | Object\|null | 验证后的图片元数据 |
-| `photo_id` | string\|null | 关联的 photo ID（CONFIRMED 后） |
-| `expires_at` | Date | 过期时间（24h） |
-| `canceled_at` | Date\|null | 取消时间 |
-| `confirm_lease_token` | string\|null | confirm 租约令牌 |
-| `confirm_lease_expire_at` | Date\|null | 租约过期时间 |
-
-### 13.7 `deletion_tasks`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `_id` | string | 自动生成 |
-| `_openid` | string | 所属用户（注销完成后清空） |
-| `type` | string | `PHOTO_DELETE` / `ACCOUNT_DELETION` / 系统检查点 |
-| `task_key` | string | 唯一键（`<type>:<id>`） |
-| `status` | string | `PENDING` / `PROCESSING` / `RETRYING` / `COMPLETED` / `MANUAL_REQUIRED` |
-| `current_stage` | string | 当前执行阶段 |
-| `stage_cursor` | Object | 各阶段游标状态 |
-| `retry_count` | number | 重试次数 |
-| `next_retry_at` | Date\|null | 下次重试时间 |
-| `lease_token` | string\|null | 租约令牌 |
-| `lease_expire_at` | Date\|null | 租约过期时间 |
-| `file_id` | string\|null | 关联文件 ID（图片删除） |
-| `file_size` | number\|null | 文件大小（图片删除） |
-| `photo_id` | string\|null | 关联图片 ID |
-| `applied_at` | Date | 任务创建时间 |
-| `completed_at` | Date\|null | 完成时间 |
-
----
-
-## 14. 环境变量与特性开关
-
-以下环境变量在云函数冷启动时校验，部署前必须正确配置：
+## 12. 环境变量
 
 | 变量 | 使用模块 | 说明 |
 |---|---|---|
@@ -1023,12 +920,3 @@ this.setData({
 | `UPLOAD_ATTEMPT_REQUIRED` | upload | 是否强制使用 attempt 上传 |
 | `PUBLIC_RESOURCE_ERROR_MASKING` | 所有模块 | 是否对不存在资源统一返回安全错误 |
 | `ENABLE_HEALTH_CHECK` | user | 是否启用健康检查（必须 `'true'`） |
-
----
-
-## 15. 关联文档
-
-- [API 字段→设计稿动态映射](./API-FIELD-DESIGN-MAPPING-V1.0.0.md) — 每个 API 字段如何驱动 UI 渲染
-- [前端还原指南](./FRONTEND-RESTORATION-GUIDE-%E5%9B%BE%E7%89%87%E7%AC%94%E8%AE%B0%E5%B0%8F%E7%A8%8B%E5%BA%8F-V1.0.0.md) — 设计稿还原实施细节
-- [设计系统文档](./DESIGN-SYSTEM-%E5%9B%BE%E7%89%87%E7%AC%94%E8%AE%B0%E5%B0%8F%E7%A8%8B%E5%BA%8F-V1.0.0.md) — TDesign 组件策略
-- [技术架构文档](./TECHNICAL-ARCHITECTURE-%E5%9B%BE%E7%89%87%E7%AC%94%E8%AE%B0%E5%B0%8F%E7%A8%8B%E5%BA%8F-V1.0.0.md) — 系统架构总览

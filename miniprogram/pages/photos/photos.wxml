@@ -91,16 +91,14 @@
     </scroll-view>
   </view>
 
-  <t-button
-    t-class="fab-button"
-    theme="primary"
-    size="large"
-    shape="circle"
+  <view
+    class="fab-button"
+    role="button"
     aria-label="上传图片"
     bind:tap="handleOpenUpload"
   >
-    <text class="fab-icon">+</text>
-  </t-button>
+    <text class="fab-icon">＋</text>
+  </view>
 
   <t-popup visible="{{showSourcePopup}}" placement="bottom" bind:visible-change="handleSourcePopupChange">
     <view class="source-popup">

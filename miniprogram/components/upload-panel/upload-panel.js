@@ -30,6 +30,7 @@ Component({
     uploadedCount: 0,
     successCount: 0,
     failedCount: 0,
+    errorHint: '',
     hasActive: false,
     allDone: false,
   },
@@ -49,6 +50,8 @@ Component({
     _setTasks(tasks, extra = {}, callback) {
       const successCount = tasks.filter(task => task.status === 'success').length
       const failedCount = tasks.filter(task => task.status === 'failed').length
+      const firstFailed = tasks.find(task => task.status === 'failed')
+      const errorHint = firstFailed && firstFailed.error ? firstFailed.error : '上传失败，请重试'
       const hasActive = tasks.some(task => ACTIVE_STATUS.includes(task.status))
       const allDone = tasks.length > 0 && tasks.every(task => FINAL_STATUS.includes(task.status))
       this.setData({
@@ -57,6 +60,7 @@ Component({
         uploadedCount: successCount,
         successCount,
         failedCount,
+        errorHint,
         hasActive,
         allDone,
         ...extra,

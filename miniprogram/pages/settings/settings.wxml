@@ -1,6 +1,6 @@
 <!-- PG-007 设置与隐私 -->
 <view class="page">
-  <t-navbar title="设置" left-arrow bind:go-back="handleBack" />
+  <t-navbar title="设置" />
   <view class="content" style="padding-top: {{navTotalHeight}}px;">
     <!-- 存储空间卡片 -->
     <view class="section-group">
