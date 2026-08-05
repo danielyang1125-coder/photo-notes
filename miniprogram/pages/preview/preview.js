@@ -34,6 +34,7 @@ Page({
     this._touchStartX = 0
     this._touchStartY = 0
     this._navigating = false
+    this._detailCache = {}  // 相邻图片详情缓存，key=photoId
 
     const photoId = options.photoId
     if (!photoId) {
@@ -53,6 +54,10 @@ Page({
             currentIndex: ctx.currentIndex || 0,
             hasSwipeContext: true,
           })
+          // 如果初始详情已加载完成，立即预加载相邻图片
+          if (this.data.pageState === 'ready') {
+            this._prefetchAdjacent(ctx.currentIndex || 0)
+          }
         }
       })
     }
@@ -110,47 +115,73 @@ Page({
     return d.toISOString()
   },
 
-  async loadDetail() {
-    this.setData({ pageState: 'loading' })
+  // 将 API 返回的详情数据格式化为渲染所需的结构
+  _formatDetailData(d) {
+    const p = d.photo
+    if (p.shoot_time) {
+      const dt = new Date(p.shoot_time)
+      p.shoot_time_str =
+        dt.getFullYear() +
+        '-' +
+        String(dt.getMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(dt.getDate()).padStart(2, '0') +
+        ' ' +
+        String(dt.getHours()).padStart(2, '0') +
+        ':' +
+        String(dt.getMinutes()).padStart(2, '0')
+    } else {
+      p.shoot_time_str = '未知'
+    }
+    return {
+      photo: p,
+      tags: d.tags || [],
+      notes: this._fmtNoteTimes(d.notes),
+    }
+  },
+
+  async loadDetail(keepContent = false) {
+    // 滑动切换时不重置 pageState，保留旧内容 + loading 蒙层，避免白屏
+    if (!keepContent) {
+      this.setData({ pageState: 'loading' })
+    }
     try {
       const res = await photosService.detail(this.data.photoId)
       if (res.result.code === 'SUCCESS') {
         const d = res.result.data
-        // 格式化时间
-        const p = d.photo
-        if (p.shoot_time) {
-          const dt = new Date(p.shoot_time)
-          p.shoot_time_str =
-            dt.getFullYear() +
-            '-' +
-            String(dt.getMonth() + 1).padStart(2, '0') +
-            '-' +
-            String(dt.getDate()).padStart(2, '0') +
-            ' ' +
-            String(dt.getHours()).padStart(2, '0') +
-            ':' +
-            String(dt.getMinutes()).padStart(2, '0')
-        } else {
-          p.shoot_time_str = '未知'
-        }
+        const formatted = this._formatDetailData(d)
         this.setData({
-          photo: p,
-          tags: d.tags || [],
-          notes: this._fmtNoteTimes(d.notes),
+          ...formatted,
           pageState: 'ready',
         })
+        // 写入缓存 + 预加载相邻图片
+        this._detailCache[this.data.photoId] = formatted
+        this._evictFarCache()
+        this._prefetchAdjacent(this.data.currentIndex)
         if (this._initialNoteCount === null) {
           this._initialNoteCount = (d.notes || []).length
           this._initialTagIds = (d.tags || []).map(tag => tag._id).sort()
         }
       } else if (res.result.code === 'PHOTO_NOT_FOUND') {
-        this.setData({ pageState: 'empty' })
+        if (keepContent) {
+          wx.showToast({ title: '图片不存在或已删除', icon: 'none' })
+        } else {
+          this.setData({ pageState: 'empty' })
+        }
       } else {
-        this.setData({ pageState: 'error' })
+        if (keepContent) {
+          wx.showToast({ title: '加载失败，请重试', icon: 'none' })
+        } else {
+          this.setData({ pageState: 'error' })
+        }
       }
     } catch (e) {
       console.error('[preview]', e)
-      this.setData({ pageState: 'error' })
+      if (keepContent) {
+        wx.showToast({ title: '网络异常，请重试', icon: 'none' })
+      } else {
+        this.setData({ pageState: 'error' })
+      }
     }
   },
 
@@ -211,7 +242,25 @@ Page({
     // 记录当前页的变更信息
     this._signalChanges()
 
-    // 保留当前内容 + 显示 loading 蒙层，避免页面闪黑屏
+    // 命中缓存 → 即时渲染，无需 loading
+    const cached = this._detailCache[nextPhotoId]
+    if (cached) {
+      this.setData({
+        photoId: nextPhotoId,
+        currentIndex: index,
+        ...cached,
+      }, () => {
+        this._initialNoteCount = null
+        this._initialTagIds = null
+        this._initialNoteCount = (cached.notes || []).length
+        this._initialTagIds = (cached.tags || []).map(tag => tag._id).sort()
+        this._prefetchAdjacent(index)
+        this._navigating = false
+      })
+      return
+    }
+
+    // 未命中缓存 → 保留旧内容 + loading 蒙层，异步加载
     this.setData({
       photoId: nextPhotoId,
       currentIndex: index,
@@ -219,7 +268,7 @@ Page({
     }, () => {
       this._initialNoteCount = null
       this._initialTagIds = null
-      this.loadDetail().finally(() => {
+      this.loadDetail(true).finally(() => {
         this.setData({ swipeLoading: false })
         this._navigating = false
       })
@@ -249,6 +298,39 @@ Page({
     this._initialTagIds = null
   },
 
+  // 淘汰离当前图片最远的缓存条目，控制缓存大小
+  _evictFarCache() {
+    const keys = Object.keys(this._detailCache)
+    if (keys.length <= 5) return
+    const ids = this.data.photoIds
+    const cur = this.data.currentIndex
+    let furthest = keys[0]
+    let furthestDist = 0
+    keys.forEach(k => {
+      const idx = ids.indexOf(k)
+      const dist = idx < 0 ? Infinity : Math.abs(idx - cur)
+      if (dist > furthestDist) { furthestDist = dist; furthest = k }
+    })
+    delete this._detailCache[furthest]
+  },
+
+  // 预加载相邻图片详情（index ± 1）
+  _prefetchAdjacent(index) {
+    const ids = this.data.photoIds
+    if (ids.length <= 1) return
+    ;[index - 1, index + 1].forEach(i => {
+      if (i < 0 || i >= ids.length) return
+      const id = ids[i]
+      if (!id || this._detailCache[id]) return
+      photosService.detail(id).then(res => {
+        if (res.result.code === 'SUCCESS') {
+          this._detailCache[id] = this._formatDetailData(res.result.data)
+          this._evictFarCache()
+        }
+      }).catch(() => {})  // 预加载静默失败
+    })
+  },
+
   handleBack() {
     wx.navigateBack()
   },
@@ -256,11 +338,7 @@ Page({
   handleViewImage() {
     const { preview_url: url } = this.data.photo
     if (!url) return
-    // 有列表上下文时传入全部预览 URL，支持全屏左右滑动
-    const urls = this.data.hasSwipeContext && this.data.photoIds.length > 1
-      ? this.data.photoIds.map(() => url) // 暂用当前 URL 占位，后续可优化为预加载
-      : [url]
-    wx.previewImage({ urls, current: url })
+    wx.previewImage({ urls: [url], current: url })
   },
 
   handleShowActions() {
